@@ -1,7 +1,7 @@
 # OrthoFind
 OrthoFind is a comprehensive Nextflow pipeline for automated ortholog identification, domain analysis, and functional annotation across multiple species. It integrates homology search, ortholog assignment, and domain conservation analysis into a single streamlined workflow.
 
-📋 # Overview
+# 📋Overview
 OrthoFind performs a multi-step analysis to identify and validate orthologous genes:
 
 1. **Homology Search** - Identifies homologous sequences using jackhmmer
@@ -9,7 +9,7 @@ OrthoFind performs a multi-step analysis to identify and validate orthologous ge
 3. **Domain Analysis** - Validates domain conservation using HMMER
 4. **Summary Reporting** - Generates comprehensive HTML reports and statistics
 
-🚀 # Quick Start
+# 🚀Quick Start
 
 ## Prerequisites
 - Nextflow (≥ 20.07.1)
@@ -45,7 +45,7 @@ query,database,kog_id,target_domain
 - kog_id: Optional KOG/COG ID for ortholog assignment
 - target_domain: Optional comma-separated domain IDs for filtering
 
-⚙️ # Parameters
+# ⚙️Parameters
 ## Required Parameters
 - ```--input```: Input CSV file with query-database pairs
 - ```--eggnog_db```: Path to eggNOG database directory
@@ -55,7 +55,7 @@ query,database,kog_id,target_domain
 
 - ```--threads```: Number of CPU threads (default: 10)
 
-📁 # Output Structure
+# 📁Output Structure
 
 ````
 results/
@@ -78,7 +78,7 @@ results/
 └── summary_counts.tsv
 ````
 
-🔧 # Processes
+# 🔧Processes
 ## 1. **HOMOLOGY_SEARCH**
 
 - **Tool**: jackhmmer
@@ -104,7 +104,7 @@ results/
 
 - **Output**: Interactive HTML report with counts, sequences, and domain information
 
-🧪 # Example Workflow
+# 🧪Example Workflow
 
 ````bash
 # Run with custom domains
@@ -127,7 +127,7 @@ nextflow run main.nf \
 
 ````
 
-🔍 # Features
+# 🔍Features
 
 - **Flexible Input**: Handle multiple query-database pairs via CSV
 - **Robust Error Handling**: Continue processing even when individual searches fail
@@ -136,40 +136,43 @@ nextflow run main.nf \
 - **Resource Efficient**: Parallel processing with configurable resources
 - **Graceful Degradation**: Handles empty results and missing hits gracefully
 
-🛠️ # Technical Details
+# 🛠️Technical Details
 
 - **DSL**: Nextflow DSL2
 - **Container Support**: Conda environments for all tools
 - **Resume Capability**: Use -resume to continue interrupted runs
 - **Resource Config**: Customizable via Nextflow configuration
 
-📊 # Output Interpretation
+# 📊Output Interpretation
 
 - **Homology Hits**: All sequences with significant similarity to query
 - **Orthologs**: Sequences sharing the same KOG/COG annotation
 - **Final Orthologs**: Orthologs that pass domain conservation criteria
 - **Domain Information**: Pfam/SMART domains detected in each sequence
 
-🐛 # Troubleshooting
+# 🐛Troubleshooting
+
 ## Common Issues
 
 1. **Empty hits files**: Some queries may not find homologs - this is normal for distant species
 2. **EggNOG database**: Ensure the path is correct and database files exist
 3. **Domain database**: Pipeline will auto-download Pfam/SMART if not provided
 
-📈 Performance Tips
+# 📈Performance Tips
 
 - Use ```--threads``` to parallelize CPU-intensive steps
 - Provide pre-downloaded eggNOG and HMM databases for faster execution
 - Use ```-resume``` to continue from successful steps
 
-🤝 # Contributing
+# 🤝Contributing
+
 Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
 
-📄 # License
+# 📄License
+
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-🙏 # Acknowledgments
+ # 🙏Acknowledgments
 
 - **eggNOG-mapper**: For functional annotations
 - **HMMER**: For domain detection
