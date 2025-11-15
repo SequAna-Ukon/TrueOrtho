@@ -164,18 +164,24 @@ nextflow run main.nf \
 - Provide pre-downloaded eggNOG and HMM databases for faster execution
 - Use ```-resume``` to continue from successful steps
 
-# 🤝Contributing
-
-Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
 
 # 📄License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
- # 🙏Acknowledgments
+# Cite Us
+
+If you use this software, please cite it as below:
+
+``` commandline
+```
+
+# Acknowledgments
+This work is supported through the Sequencing analysis (SequAna) core facility at the University of Konstanz [https://www.biologie.uni-konstanz.de/sequana/]
 
 - **eggNOG-mapper**: For functional annotations
 - **HMMER**: For domain detection
 - **DIAMOND**: For fast sequence searches
 - **Nextflow**: For workflow orchestration
   
+For more information or help, please contact [abdoallah.sharaf@uni-konstanz.de].
