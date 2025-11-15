@@ -104,6 +104,9 @@ results/
 
 - **Output**: Interactive HTML report with counts, sequences, and domain information
 
+![OrthoFind Workflow Overview](Flowchart.jpg)
+
+
 # 🧪Example Workflow
 
 ````bash
