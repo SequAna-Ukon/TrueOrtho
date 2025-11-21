@@ -1,8 +1,8 @@
-# OrthoFind
-OrthoFind is a comprehensive Nextflow pipeline for automated ortholog identification, domain analysis, and functional annotation across multiple species. It integrates homology search, ortholog assignment, and domain conservation analysis into a single streamlined workflow.
+# TrueOrtho
+TrueOrtho is a comprehensive Nextflow pipeline for automated ortholog identification, domain analysis, and functional annotation across multiple species. It integrates homology search, ortholog assignment, and domain conservation analysis into a single streamlined workflow.
 
 # 📋Overview
-OrthoFind performs a multi-step analysis to identify and validate orthologous genes:
+TrueOrtho performs a multi-step analysis to identify and validate orthologous genes:
 
 1. **Homology Search** - Identifies homologous sequences using jackhmmer
 2. **Ortholog Assignment** - Assigns orthologs using eggNOG-mapper and KOG/COG annotations
@@ -74,7 +74,7 @@ results/
 │       ├── {query}_{species}_domains.tblout
 │       ├── {query}_{species}_ortholog_domains.txt
 │       └── {query}_{species}_target_domains.txt
-├── orthofind_report.html
+├── TrueOrtho_report.html
 └── summary_counts.tsv
 ````
 
@@ -104,7 +104,7 @@ results/
 
 - **Output**: Interactive HTML report with counts, sequences, and domain information
 
-![OrthoFind Workflow Overview](Flowchart.jpg)
+![TrueOrtho Workflow Overview](Flowchart.jpg)
 
 
 # 🧪Example Workflow
