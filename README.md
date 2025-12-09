@@ -177,6 +177,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 If you use this software, please cite it as below:
 
 ``` commandline
+Sharaf, A., & Voolstra, C. R. (2025). SequAna-Ukon/TrueOrtho: 1.0.0. Zenodo. https://doi.org/10.5281/zenodo.17867442
 ```
 
 # Acknowledgments
