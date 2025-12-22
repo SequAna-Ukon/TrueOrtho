@@ -1,12 +1,14 @@
 process DOMAIN_SCAN {
     tag "${query.simpleName}_${species}"
+    
     publishDir "results/domain_scan/${query.simpleName}_${species}",
         mode: 'copy',
         saveAs: { f -> f.endsWith('.log') ? null : f }
 
     input:
-    tuple path(query), path(orthologs_fa), val(threads), val(target_domain), val(domain_db), val(species)
-
+    tuple path(query), path(orthologs_fa), val(threads), val(target_domain), val(species)
+    path hmm_db_dir
+    
     output:
     path "${query.simpleName}_${species}_filtered_orthologs.fa", optional: true, emit: filtered_orthologs
     path "${query.simpleName}_${species}_domains.tblout", optional: true, emit: domains_tblout
@@ -20,51 +22,21 @@ process DOMAIN_SCAN {
     """
     #!/bin/bash
     set -euo pipefail
-    trap 'echo "[ERROR] DOMAIN_SCAN failed at line \$LINENO"; exit 1' ERR
 
     echo "[INFO] Starting DOMAIN_SCAN for ${query.simpleName}_${species}"
     echo "[INFO] Target domain: '${target_domain}'"
     echo "[INFO] Orthologs: ${orthologs_fa}"
-    echo "[INFO] Domain DB param: '${domain_db}'"
+    echo "[INFO] HMM database: ${hmm_db_dir}/Pf_Sm"
 
     if [ ! -s "${orthologs_fa}" ]; then
         echo "[INFO] Orthologs file is empty or missing. Skipping domain scan."
         exit 0
     fi
 
-    # === HMM DATABASE SETUP ===
-    if [ -n "${domain_db}" ] && [ -f "${domain_db}" ]; then
-        DB_PATH="${domain_db}"
-        echo "[INFO] Using provided HMM database: \$DB_PATH"
-        if [ ! -f "\$DB_PATH.h3m" ]; then
-            echo "[INFO] Pressing provided database..."
-            hmmpress "\$DB_PATH"
-        fi
-    else
-        DB_DIR="${workflow.workDir}/hmm_database"
-        mkdir -p "\$DB_DIR"
-        DB_PATH="\$DB_DIR/Pf_Sm"
-        LOCK_DIR="\$DB_DIR/.lock"
-
-        if mkdir "\$LOCK_DIR" 2>/dev/null; then
-            trap "rm -rf \$LOCK_DIR" EXIT
-            if [ ! -f "\$DB_PATH" ]; then
-                echo "[INFO] Downloading Pfam/SMART database..."
-                cd "\$DB_DIR"
-                wget -q "https://cloud.uni-konstanz.de/index.php/s/MMzHFEBjZLrpmN7/download" -O "Pf_Sm"
-                cd -
-            fi
-            if [ ! -f "\$DB_PATH.h3m" ]; then
-                echo "[INFO] Pressing default database..."
-                hmmpress "\$DB_PATH"
-            fi
-        else
-            echo "[INFO] Waiting for another task to set up database..."
-            while [ -d "\$LOCK_DIR" ]; do sleep 1; done
-        fi
-    fi
-
-    # === DOMAIN SCAN & FILTER (unchanged from your version) ===
+    # Set database path
+    DB_PATH="${hmm_db_dir}/Pf_Sm"
+    
+    # === DOMAIN SCAN & FILTER ===
     required_domains_list=""
     if [ -n "${target_domain}" ]; then
         echo "[INFO] Using provided target domain(s): ${target_domain}"
