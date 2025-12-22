@@ -9,7 +9,7 @@ TrueOrtho performs a multi-step analysis to identify and validate orthologous ge
 3. **Domain Analysis** - Validates domain conservation using HMMER
 4. **Summary Reporting** - Generates comprehensive HTML reports and statistics
 
-# 🚀Quick Start
+# Quick Start
 
 ## Prerequisites
 - Nextflow (≥ 20.07.1)
@@ -47,13 +47,16 @@ query,database,kog_id,target_domain
 
 # ⚙️Parameters
 ## Required Parameters
+
 - ```--input```: Input CSV file with query-database pairs
-- ```--eggnog_db```: Path to eggNOG database directory
+
 
 ## Optional Parameters
-- ```--domain_db```: Path to HMM database for domain scanning (default: downloads Pfam/SMART)
 
+- ```--domain_db```: Path to HMM database for domain scanning (default: downloads a combined in-house Pfam/SMART database)
+- ```--eggnog_db```: Path to eggNOG database directory (default: downloads eggNOG 5.0.2 database)
 - ```--threads```: Number of CPU threads (default: 10)
+
 
 # 📁Output Structure
 
@@ -153,13 +156,6 @@ nextflow run main.nf \
 - **Final Orthologs**: Orthologs that pass domain conservation criteria
 - **Domain Information**: Pfam/SMART domains detected in each sequence
 
-# 🐛Troubleshooting
-
-## Common Issues
-
-1. **Empty hits files**: Some queries may not find homologs - this is normal for distant species
-2. **EggNOG database**: Ensure the path is correct and database files exist
-3. **Domain database**: Pipeline will auto-download Pfam/SMART if not provided
 
 # 📈Performance Tips
 
