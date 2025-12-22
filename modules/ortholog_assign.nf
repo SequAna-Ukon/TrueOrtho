@@ -1,14 +1,15 @@
 process ORTHOLOG_ASSIGN {
     tag "${query.simpleName}_${species}"
-
+    
     // Publish only the three key files
     publishDir "results/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_orthologs.fa'
     publishDir "results/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_hits.txt', optional: true
     publishDir "results/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_kog_info.txt', optional: true
 
     input:
-    tuple path(query), path(hits_fasta), val(threads), val(kog_id), val(eggnog_db), val(species)
-
+    tuple path(query), path(hits_fasta), val(threads), val(kog_id), val(species)
+    path eggnog_db_dir
+    
     output:
     tuple path(query), path("${query.simpleName}_${species}_orthologs.fa"), val(species), emit: orthologs_fa
     path "${query.simpleName}_${species}_hits.txt", optional: true, emit: hits_to_extract
@@ -35,8 +36,13 @@ process ORTHOLOG_ASSIGN {
     echo "[INFO] Species: ${species}"
     echo "[INFO] KOG ID: '${kog_id}'"
     echo "[INFO] Threads: ${threads}"
+    echo "[INFO] EggNOG database directory: ${eggnog_db_dir}"
     echo "=================================="
 
+    # List contents of database directory for debugging
+    echo "[DEBUG] Contents of eggnog database directory:"
+    find "${eggnog_db_dir}" -type f -name "*.db" -o -name "*.dmnd" -o -name "*.txt" 2>/dev/null | head -20
+    
     # Check if hits file exists and has content (at least one sequence)
     if [ ! -s "${hits_fasta}" ]; then
         echo "[WARNING] Hits file is empty or missing. No orthologs to process."
@@ -88,53 +94,77 @@ process ORTHOLOG_ASSIGN {
         echo "Input hits: \$fasta_seq_count sequences"
     } > "\$kog_info_file"
 
-    # EggNOG DB setup
-    eggnog_db_dir=""
-    if [ -n "${eggnog_db}" ] && [ "${eggnog_db}" != "null" ] && [ -d "${eggnog_db}" ]; then
-        # Remove trailing slash if present
-        eggnog_db_dir=\$(echo "${eggnog_db}" | sed 's:/*\$::')
-        echo "[INFO] Using provided eggNOG database: \$eggnog_db_dir"
-        
-        # Check if database files exist
-        if [ ! -f "\$eggnog_db_dir/eggnog_proteins.dmnd" ]; then
-            echo "[ERROR] eggNOG database not found at: \$eggnog_db_dir/eggnog_proteins.dmnd"
+    # Find the eggnog.db file - it might be in the directory or in a subdirectory
+    EGGNOG_DB_PATH=""
+    if [ -f "${eggnog_db_dir}/eggnog.db" ]; then
+        EGGNOG_DB_PATH="${eggnog_db_dir}"
+    elif [ -f "${eggnog_db_dir}/data/eggnog.db" ]; then
+        EGGNOG_DB_PATH="${eggnog_db_dir}/data"
+    else
+        # Search for eggnog.db in any subdirectory
+        found_db=\$(find "${eggnog_db_dir}" -name "eggnog.db" -type f | head -1)
+        if [ -n "\$found_db" ]; then
+            EGGNOG_DB_PATH=\$(dirname "\$found_db")
+        else
+            echo "[ERROR] eggnog.db not found in ${eggnog_db_dir} or subdirectories"
+            echo "[INFO] Searching for any .db files:"
+            find "${eggnog_db_dir}" -name "*.db" -type f 2>/dev/null
             exit 1
         fi
-    else
-        echo "[INFO] No valid eggNOG database provided, using default location"
-        eggnog_db_dir="\${workflow.workDir}/eggnog_database"
-        mkdir -p "\$eggnog_db_dir"
-        echo "[INFO] Downloading eggNOG data..."
-        download_eggnog_data.py -y --data_dir "\$eggnog_db_dir" || {
-            echo "[ERROR] Failed to download eggNOG data"
-            exit 1
-        }
     fi
     
-    export EGGNOG_DATA_DIR="\$eggnog_db_dir"
+    echo "[INFO] Found eggnog.db at: \$EGGNOG_DB_PATH"
+    export EGGNOG_DATA_DIR="\$EGGNOG_DB_PATH"
     echo "[INFO] EGGNOG_DATA_DIR set to: \$EGGNOG_DATA_DIR"
+    
+    # Check for other essential files in the same directory
+    if [ ! -f "\$EGGNOG_DATA_DIR/eggnog_proteins.dmnd" ]; then
+        # Try to find it in the original directory
+        if [ -f "${eggnog_db_dir}/eggnog_proteins.dmnd" ]; then
+            echo "[INFO] Found eggnog_proteins.dmnd in ${eggnog_db_dir}"
+            # Create symlink or copy
+            ln -sf "${eggnog_db_dir}/eggnog_proteins.dmnd" "\$EGGNOG_DATA_DIR/eggnog_proteins.dmnd" 2>/dev/null || \
+            cp "${eggnog_db_dir}/eggnog_proteins.dmnd" "\$EGGNOG_DATA_DIR/eggnog_proteins.dmnd"
+        else
+            echo "[WARNING] eggnog_proteins.dmnd not found in \$EGGNOG_DATA_DIR"
+            echo "[INFO] emapper.py might fail or try to download it"
+        fi
+    fi
 
     # Annotate query
     echo "[INFO] Annotating query sequence..."
-    emapper.py -m diamond --cpu ${task.cpus} --data_dir "\$eggnog_db_dir" -i "${query}" -o query_emapper 2>&1 | tee query_annotation.log
-    for i in {1..30}; do [ -s query_emapper.emapper.annotations ] && break; sleep 2; done
+    echo "[DEBUG] Running: emapper.py -m diamond --cpu ${task.cpus} --data_dir \"\$EGGNOG_DATA_DIR\" -i \"${query}\" -o query_emapper"
+    emapper.py -m diamond --cpu ${task.cpus} --data_dir "\$EGGNOG_DATA_DIR" -i "${query}" -o query_emapper 2>&1 | tee query_annotation.log
+    
+    # Check if annotation succeeded
     if [ ! -s query_emapper.emapper.annotations ]; then
         echo "[ERROR] Query annotation failed or produced empty results"
+        echo "[INFO] Checking if annotation files were created:"
+        ls -la query_emapper.* 2>/dev/null || echo "No query_emapper files found"
+        echo "[INFO] Last 20 lines of query_annotation.log:"
+        tail -20 query_annotation.log
         echo "Query annotation failed" >> "\$kog_info_file"
         touch "\$orthologs_file" "\$hits_file"
         exit 0
     fi
+    
+    echo "[INFO] Query annotation completed successfully"
 
     # Annotate hits
     echo "[INFO] Annotating hit sequences..."
-    emapper.py -m diamond --cpu ${task.cpus} --data_dir "\$eggnog_db_dir" -i "${hits_fasta}" -o hits_emapper 2>&1 | tee hits_annotation.log
-    for i in {1..30}; do [ -s hits_emapper.emapper.annotations ] && break; sleep 2; done
+    echo "[DEBUG] Running: emapper.py -m diamond --cpu ${task.cpus} --data_dir \"\$EGGNOG_DATA_DIR\" -i \"${hits_fasta}\" -o hits_emapper"
+    emapper.py -m diamond --cpu ${task.cpus} --data_dir "\$EGGNOG_DATA_DIR" -i "${hits_fasta}" -o hits_emapper 2>&1 | tee hits_annotation.log
+    
     if [ ! -s hits_emapper.emapper.annotations ]; then
         echo "[WARNING] Hits annotation failed or produced empty results"
+        echo "[INFO] Checking if annotation files were created:"
+        ls -la hits_emapper.* 2>/dev/null || echo "No hits_emapper files found"
         echo "Hits annotation failed - possibly no significant matches" >> "\$kog_info_file"
         touch "\$orthologs_file" "\$hits_file"
         exit 0
     fi
+
+    echo "[INFO] Hits annotation completed successfully"
 
     # KOG logic
     target_kog=""
