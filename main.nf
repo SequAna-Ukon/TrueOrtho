@@ -2,6 +2,7 @@
 nextflow.enable.dsl=2
 
 include { HOMOLOGY_SEARCH } from './modules/homology_search.nf'
+include { DATABASE_SETUP } from './modules/database_setup.nf'
 include { ORTHOLOG_ASSIGN } from './modules/ortholog_assign.nf'
 include { DOMAIN_SCAN } from './modules/domain_scan.nf'
 include { GENERATE_SUMMARY_REPORT } from './modules/sum_repo.nf'
@@ -12,7 +13,7 @@ workflow {
     params.domain_db = params.domain_db ?: ""
     params.eggnog_db = params.eggnog_db ?: ""
 
-    // Read CSV and create a channel with query simpleName and species as keys
+    // Read CSV
     query_db_ch = Channel.fromPath(params.csv_file)
         .splitCsv(header:true)
         .map { row ->
@@ -31,20 +32,26 @@ workflow {
         query_db_ch.map { q_name, species, q, db, k, td -> tuple(q, db) }
     )
 
-    // ORTHOLOG_ASSIGN
-    ortho_input_ch = query_db_ch
+    // DATABASE_SETUP (runs once, returns tuple: (eggnog_db_dir, hmm_db_dir))
+    db_results = DATABASE_SETUP(params.eggnog_db, params.domain_db)
+
+    // ORTHOLOG_ASSIGN (needs eggnog database)
+    ortho_data_ch = query_db_ch
         .map { q_name, species, q, db, k, td -> tuple(q_name, species, q, db, k, td) }
         .join(
             homology_results.hits_fasta.map { q, db, hits -> tuple(q.simpleName, db.simpleName, q, db, hits) },
             by: [0, 1]
         )
         .map { q_name, species, q, db, k, td, q2, db2, hits ->
-            tuple(q, hits, params.threads, k, params.eggnog_db, species)
+            tuple(q, hits, params.threads, k, species)
         }
+    
+    // Get eggnog database from the tuple
+    eggnog_db_ch = db_results.db_dirs.map { eggnog_db_dir, hmm_db_dir -> eggnog_db_dir }
+    
+    ortholog_results = ORTHOLOG_ASSIGN(ortho_data_ch, eggnog_db_ch)
 
-    ortholog_results = ORTHOLOG_ASSIGN(ortho_input_ch)
-
-    // DOMAIN_SCAN - FIXED VERSION
+    // DOMAIN_SCAN (needs HMM database)
     domain_input_ch = ortholog_results.orthologs_fa
         .map { q, fa, species ->
             def fa_file = file(fa)
@@ -56,11 +63,15 @@ workflow {
         )
         .map { q_name, species, q1, fa, species2, fa_valid, q2, db, k, td ->
             (q1.name == q2.name && fa_valid && species == species2) ? 
-                tuple(q1, fa, params.threads, td, params.domain_db, species) : null
+                tuple(q1, fa, params.threads, td, species) : null
         }
         .filter { it != null }
-
-    domain_results = DOMAIN_SCAN(domain_input_ch)
+    
+    // Get HMM database from the tuple
+    hmm_db_ch = db_results.db_dirs.map { eggnog_db_dir, hmm_db_dir -> hmm_db_dir }
+    
+    // Pass both channels separately to DOMAIN_SCAN
+    domain_results = DOMAIN_SCAN(domain_input_ch, hmm_db_ch)
 
     // Collect outputs for summary report
     homology_hits_ch = homology_results.hits_list.collect()
