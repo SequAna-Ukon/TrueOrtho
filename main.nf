@@ -13,77 +13,47 @@ workflow {
     params.domain_db = params.domain_db ?: ""
     params.eggnog_db = params.eggnog_db ?: ""
 
-    // Read CSV
-    query_db_ch = Channel.fromPath(params.csv_file)
+    // 1. Setup Input Channel
+    // Tuple: [query_id, species, query_file, db_file, kog_id, target_domain]
+    input_ch = Channel.fromPath(params.csv_file)
         .splitCsv(header:true)
         .map { row ->
-            tuple(
-                row.query.tokenize('/')[-1].tokenize('.')[0], // query simpleName
-                file(row.database).simpleName,               // species
-                file(row.query),
-                file(row.database),
-                row.kog_id ?: "",
-                row.target_domain ?: ""
-            )
+            def q_file = file(row.query)
+            def db_file = file(row.database)
+            tuple(q_file.simpleName, db_file.simpleName, q_file, db_file, row.kog_id ?: "", row.target_domain ?: "")
         }
 
-    // HOMOLOGY_SEARCH
-    homology_results = HOMOLOGY_SEARCH(
-        query_db_ch.map { q_name, species, q, db, k, td -> tuple(q, db) }
-    )
-
-    // DATABASE_SETUP (runs once, returns tuple: (eggnog_db_dir, hmm_db_dir))
+    // 2. Setup Databases
     db_results = DATABASE_SETUP(params.eggnog_db, params.domain_db)
 
-    // ORTHOLOG_ASSIGN (needs eggnog database)
-    ortho_data_ch = query_db_ch
-        .map { q_name, species, q, db, k, td -> tuple(q_name, species, q, db, k, td) }
-        .join(
-            homology_results.hits_fasta.map { q, db, hits -> tuple(q.simpleName, db.simpleName, q, db, hits) },
-            by: [0, 1]
-        )
-        .map { q_name, species, q, db, k, td, q2, db2, hits ->
-            tuple(q, hits, params.threads, k, species)
-        }
-    
-    // Get eggnog database from the tuple
-    eggnog_db_ch = db_results.db_dirs.map { eggnog_db_dir, hmm_db_dir -> eggnog_db_dir }
-    
-    ortholog_results = ORTHOLOG_ASSIGN(ortho_data_ch, eggnog_db_ch)
+    // 3. Homology Search
+    homology_results = HOMOLOGY_SEARCH(input_ch.map { qid, sp, q, db, k, td -> tuple(q, db) })
 
-    // DOMAIN_SCAN (needs HMM database)
+    // 4. Ortholog Assignment
+    // Join homology hits back with KOG info using [query_id, species]
+    ortho_input_ch = input_ch
+        .map { qid, sp, q, db, k, td -> tuple(qid, sp, q, k) }
+        .join(homology_results.hits_fasta.map { q, db, fa -> tuple(q.simpleName, db.simpleName, fa) }, by: [0, 1])
+        .map { qid, sp, q_file, k_id, hits_fa -> tuple(q_file, hits_fa, params.threads, k_id, sp) }
+
+    ortholog_results = ORTHOLOG_ASSIGN(ortho_input_ch, db_results.db_dirs.map { it[0] })
+
+    // 5. Domain Scan
+    // ONLY run if orthologs were found (size > 0)
     domain_input_ch = ortholog_results.orthologs_fa
-        .map { q, fa, species ->
-            def fa_file = file(fa)
-            tuple(q.simpleName, species, q, fa_file, species, fa_file.exists() && fa_file.size() > 0)
-        }
-        .join(
-            query_db_ch.map { q_name, species, q, db, k, td -> tuple(q_name, species, q, db, k, td) },
-            by: [0, 1]
-        )
-        .map { q_name, species, q1, fa, species2, fa_valid, q2, db, k, td ->
-            (q1.name == q2.name && fa_valid && species == species2) ? 
-                tuple(q1, fa, params.threads, td, species) : null
-        }
-        .filter { it != null }
-    
-    // Get HMM database from the tuple
-    hmm_db_ch = db_results.db_dirs.map { eggnog_db_dir, hmm_db_dir -> hmm_db_dir }
-    
-    // Pass both channels separately to DOMAIN_SCAN
-    domain_results = DOMAIN_SCAN(domain_input_ch, hmm_db_ch)
+        .filter { q, fa, sp -> fa.size() > 0 }
+        .map { q, fa, sp -> tuple(q.simpleName, sp, q, fa) }
+        .join(input_ch.map { qid, sp, q, db, k, td -> tuple(qid, sp, td) }, by: [0, 1])
+        .map { qid, sp, q_file, ortho_fa, td -> tuple(q_file, ortho_fa, params.threads, td, sp) }
 
-    // Collect outputs for summary report
-    homology_hits_ch = homology_results.hits_list.collect()
-    ortholog_fastas_ch = ortholog_results.orthologs_fa.map { q, fa, species -> fa }.collect()
-    filtered_orthologs_ch = domain_results.filtered_orthologs.collect()
-    domain_files_ch = domain_results.ortholog_domains.collect()
+    domain_results = DOMAIN_SCAN(domain_input_ch, db_results.db_dirs.map { it[1] })
 
-    // Generate summary report
+    // 6. Reporting
+    // Collect all outputs, use ifEmpty to prevent hanging if some samples failed
     GENERATE_SUMMARY_REPORT(
-        homology_hits_ch,
-        ortholog_fastas_ch,
-        filtered_orthologs_ch,
-        domain_files_ch
+        homology_results.hits_list.collect().ifEmpty([]),
+        ortholog_results.orthologs_fa.map { it[1] }.collect().ifEmpty([]),
+        domain_results.filtered_orthologs.collect().ifEmpty([]),
+        domain_results.ortholog_domains.collect().ifEmpty([])
     )
 }
