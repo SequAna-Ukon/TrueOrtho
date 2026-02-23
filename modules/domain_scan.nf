@@ -10,10 +10,10 @@ process DOMAIN_SCAN {
     path hmm_db_dir
     
     output:
-    path "${query.simpleName}_${species}_filtered_orthologs.fa", optional: true, emit: filtered_orthologs
+    path "${query.simpleName}_${species}_filtered_orthologs.fa", emit: filtered_orthologs
+    path "${query.simpleName}_${species}_ortholog_domains.txt", emit: ortholog_domains
     path "${query.simpleName}_${species}_domains.tblout", optional: true, emit: domains_tblout
     path "${query.simpleName}_${species}_query_domains.txt", optional: true, emit: query_domains
-    path "${query.simpleName}_${species}_ortholog_domains.txt", optional: true, emit: ortholog_domains
     path "${query.simpleName}_${species}_target_domains.txt", optional: true, emit: target_domains
 
     conda "bioconda::hmmer=3.4 bioconda::seqkit=2.8.0"
@@ -23,77 +23,68 @@ process DOMAIN_SCAN {
     #!/bin/bash
     set -euo pipefail
 
-    echo "[INFO] Starting DOMAIN_SCAN for ${query.simpleName}_${species}"
-    echo "[INFO] Target domain: '${target_domain}'"
-    echo "[INFO] Orthologs: ${orthologs_fa}"
-    echo "[INFO] HMM database: ${hmm_db_dir}/Pf_Sm"
+    # --- Initialize output files to ensure process completion ---
+    OUT_FA="${query.simpleName}_${species}_filtered_orthologs.fa"
+    OUT_TXT="${query.simpleName}_${species}_ortholog_domains.txt"
+    touch "\$OUT_FA" "\$OUT_TXT"
 
     if [ ! -s "${orthologs_fa}" ]; then
-        echo "[INFO] Orthologs file is empty or missing. Skipping domain scan."
         exit 0
     fi
 
-    # Set database path
     DB_PATH="${hmm_db_dir}/Pf_Sm"
     
-    # === DOMAIN SCAN & FILTER ===
-    required_domains_list=""
-    if [ -n "${target_domain}" ]; then
-        echo "[INFO] Using provided target domain(s): ${target_domain}"
-        IFS=',' read -ra arr <<< "${target_domain}"
-        for d in "\${arr[@]}"; do
-            required_domains_list="\${required_domains_list}\${d}"\$'\\n'
-        done
-        required_domains_list=\$(echo "\$required_domains_list" | grep -v '^[[:space:]]*\$')
-        echo "# Target domains for ${query.simpleName}_${species}" > "${query.simpleName}_${species}_target_domains.txt"
-        echo "\$required_domains_list" >> "${query.simpleName}_${species}_target_domains.txt"
+    # --- 1. Identify Required Domains ---
+    required_domains_file="required.list"
+    > "\$required_domains_file"
+
+    if [ -n "${target_domain}" ] && [ "${target_domain}" != "null" ]; then
+        echo "${target_domain}" | tr ',' '\\n' | grep -v '^[[:space:]]*\$' > "\$required_domains_file"
+        cp "\$required_domains_file" "${query.simpleName}_${species}_target_domains.txt"
     else
-        echo "[INFO] Auto-detecting domains in query..."
-        hmmscan --domtblout query_domains.tblout --noali -E 1e-5 --cpu ${threads} "\$DB_PATH" "${query}" 2> query_scan.log
+        hmmscan --domtblout query_domains.tblout --noali -E 1e-5 --cpu ${threads} "\$DB_PATH" "${query}" > query_scan.log 2>&1
         if [ -s "query_domains.tblout" ]; then
-            required_domains_list=\$(awk '\$1 !~ /^#/ {print \$1}' query_domains.tblout | sort -u)
-            query_domain_count=\$(echo "\$required_domains_list" | wc -l)
-            if [ "\$query_domain_count" -gt 0 ]; then
-                echo "# Domains found in query ${query.simpleName}" > "${query.simpleName}_${species}_query_domains.txt"
-                echo "\$required_domains_list" >> "${query.simpleName}_${species}_query_domains.txt"
-            fi
+            awk '\$1 !~ /^#/ {print \$1}' query_domains.tblout | sort -u > "\$required_domains_file"
+            cp "\$required_domains_file" "${query.simpleName}_${species}_query_domains.txt"
         fi
     fi
 
-    echo "[INFO] Scanning orthologs..."
-    hmmscan --domtblout ortholog_domains.tblout --noali -E 1e-5 --cpu ${threads} "\$DB_PATH" "${orthologs_fa}" 2> ortholog_scan.log
+    # --- 2. Scan Orthologs ---
+    hmmscan --domtblout ortholog_domains.tblout --noali -E 1e-5 --cpu ${threads} "\$DB_PATH" "${orthologs_fa}" > ortholog_scan.log 2>&1
 
-    required_count=\$(echo "\$required_domains_list" | wc -l)
-    ortholog_ids=\$(seqkit seq --name --only-id "${orthologs_fa}" | sort -u)
+    # --- 3. Strict Filtering Logic (Your Original Logic) ---
+    required_count=\$(wc -l < "\$required_domains_file")
     matched_ids_file="matched_ids.tmp"
     > "\$matched_ids_file"
 
-    echo "\$ortholog_ids" | while read seq_id; do
+    # Get unique list of ortholog sequence IDs
+    seqkit seq --name --only-id "${orthologs_fa}" > all_ids.txt
+
+    while read -r seq_id; do
+        # Get domains found in THIS sequence
         seq_domains=\$(awk -v seq="\$seq_id" '\$4 == seq && \$1 !~ /^#/ {print \$1}' ortholog_domains.tblout | sort -u)
+        
         missing_count=0
         if [ "\$required_count" -gt 0 ]; then
-            while read req; do
-                [ -z "\$req" ] && continue
-                if ! echo "\$seq_domains" | grep -q "^\$req\$"; then
+            while read -r req; do
+                if ! echo "\$seq_domains" | grep -qx "\$req"; then
                     missing_count=\$((missing_count + 1))
                 fi
-            done <<< "\$required_domains_list"
+            done < "\$required_domains_file"
         fi
-        if [ "\$required_count" -eq 0 ] || [ "\$missing_count" -eq 0 ]; then
+
+        # Strict Match: Sequence must contain ALL required domains
+        if [ "\$missing_count" -eq 0 ]; then
             echo "\$seq_id" >> "\$matched_ids_file"
         fi
-    done
+    done < all_ids.txt
 
-    match_count=\$(wc -l < "\$matched_ids_file" 2>/dev/null || echo 0)
-    echo "[INFO] Selected \$match_count orthologs"
-
-    if [ "\$match_count" -gt 0 ]; then
-        seqkit grep -f "\$matched_ids_file" "${orthologs_fa}" > "${query.simpleName}_${species}_filtered_orthologs.fa"
-        awk '\$1 !~ /^#/ {print \$4 " " \$1}' ortholog_domains.tblout | sort -u > "${query.simpleName}_${species}_ortholog_domains.txt"
+    # --- 4. Finalize Outputs ---
+    if [ -s "\$matched_ids_file" ]; then
+        seqkit grep -f "\$matched_ids_file" "${orthologs_fa}" > "\$OUT_FA"
+        # Extract domain info specifically for the matched sequences
+        awk 'FNR==NR {ids[\$1]; next} \$4 in ids && \$1 !~ /^#/ {print \$4 " " \$1}' "\$matched_ids_file" ortholog_domains.tblout | sort -u > "\$OUT_TXT"
         mv ortholog_domains.tblout "${query.simpleName}_${species}_domains.tblout"
     fi
-
-    rm -f "\$matched_ids_file" 2>/dev/null || true
-    echo "[INFO] DOMAIN_SCAN completed for ${query.simpleName}_${species}"
     """
 }
