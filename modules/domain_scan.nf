@@ -23,7 +23,7 @@ process DOMAIN_SCAN {
     #!/bin/bash
     set -euo pipefail
 
-    # --- Initialize output files to ensure process completion ---
+    # --- Initialize output files ---
     OUT_FA="${query.simpleName}_${species}_filtered_orthologs.fa"
     OUT_TXT="${query.simpleName}_${species}_ortholog_domains.txt"
     touch "\$OUT_FA" "\$OUT_TXT"
@@ -32,9 +32,9 @@ process DOMAIN_SCAN {
         exit 0
     fi
 
+    # --- FIX: Database path relative to work/databases/ ---
     DB_PATH="${hmm_db_dir}/Pf_Sm"
     
-    # --- 1. Identify Required Domains ---
     required_domains_file="required.list"
     > "\$required_domains_file"
 
@@ -49,21 +49,16 @@ process DOMAIN_SCAN {
         fi
     fi
 
-    # --- 2. Scan Orthologs ---
     hmmscan --domtblout ortholog_domains.tblout --noali -E 1e-5 --cpu ${threads} "\$DB_PATH" "${orthologs_fa}" > ortholog_scan.log 2>&1
 
-    # --- 3. Strict Filtering Logic (Your Original Logic) ---
     required_count=\$(wc -l < "\$required_domains_file")
     matched_ids_file="matched_ids.tmp"
     > "\$matched_ids_file"
 
-    # Get unique list of ortholog sequence IDs
     seqkit seq --name --only-id "${orthologs_fa}" > all_ids.txt
 
     while read -r seq_id; do
-        # Get domains found in THIS sequence
         seq_domains=\$(awk -v seq="\$seq_id" '\$4 == seq && \$1 !~ /^#/ {print \$1}' ortholog_domains.tblout | sort -u)
-        
         missing_count=0
         if [ "\$required_count" -gt 0 ]; then
             while read -r req; do
@@ -73,16 +68,13 @@ process DOMAIN_SCAN {
             done < "\$required_domains_file"
         fi
 
-        # Strict Match: Sequence must contain ALL required domains
         if [ "\$missing_count" -eq 0 ]; then
             echo "\$seq_id" >> "\$matched_ids_file"
         fi
     done < all_ids.txt
 
-    # --- 4. Finalize Outputs ---
     if [ -s "\$matched_ids_file" ]; then
         seqkit grep -f "\$matched_ids_file" "${orthologs_fa}" > "\$OUT_FA"
-        # Extract domain info specifically for the matched sequences
         awk 'FNR==NR {ids[\$1]; next} \$4 in ids && \$1 !~ /^#/ {print \$4 " " \$1}' "\$matched_ids_file" ortholog_domains.tblout | sort -u > "\$OUT_TXT"
         mv ortholog_domains.tblout "${query.simpleName}_${species}_domains.tblout"
     fi
