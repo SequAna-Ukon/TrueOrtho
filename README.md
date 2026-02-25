@@ -1,7 +1,7 @@
 # TrueOrtho
 TrueOrtho is a comprehensive Nextflow pipeline for automated ortholog identification across multiple species. It integrates homology search, ortholog assignment, and domain conservation analysis into a single streamlined workflow.
 
-# 📋Overview
+# Overview
 TrueOrtho performs a multi-step analysis to identify and validate orthologous genes:
 
 1. **Homology Search** - Identifies homologous sequences using jackhmmer
@@ -110,30 +110,24 @@ results/
 ![TrueOrtho Workflow Overview](Flowchart.jpg)
 
 
-# 🧪Example Workflow
+# Example commands
 
 ````bash
 # Run with custom domains
 nextflow run main.nf \
   --input input.csv \
-  --eggnog_db /share/databases/eggnog_DB \
+  --eggnog_db /path/to/eggnog_DB \
   --domain_db /path/to/custom.hmm \
   --threads 12
 
 # Run with auto-domain detection  
 nextflow run main.nf \
   --input input.csv \
-  --eggnog_db /share/databases/eggnog_DB
-
-# Resume interrupted run
-nextflow run main.nf \
-  --input input.csv \
-  --eggnog_db /share/databases/eggnog_DB \
-  -resume
+  --eggnog_db /path/to/eggnog_DB
 
 ````
 
-# 🔍Features
+# Features
 
 - **Flexible Input**: Handle multiple query-database pairs via CSV
 - **Robust Error Handling**: Continue processing even when individual searches fail
@@ -142,14 +136,14 @@ nextflow run main.nf \
 - **Resource Efficient**: Parallel processing with configurable resources
 - **Graceful Degradation**: Handles empty results and missing hits gracefully
 
-# 🛠️Technical Details
+# Technical Details
 
 - **DSL**: Nextflow DSL2
 - **Container Support**: Conda environments for all tools
 - **Resume Capability**: Use -resume to continue interrupted runs
 - **Resource Config**: Customizable via Nextflow configuration
 
-# 📊Output Interpretation
+# Output Interpretation
 
 - **Homology Hits**: All sequences with significant similarity to query
 - **Orthologs**: Sequences sharing the same KOG/COG annotation
@@ -157,16 +151,21 @@ nextflow run main.nf \
 - **Domain Information**: Pfam/SMART domains detected in each sequence
 
 
-# 📈Performance Tips
+# Performance Tips
 
 - Use ```--threads``` to parallelize CPU-intensive steps
 - Provide pre-downloaded eggNOG and HMM databases for faster execution
 - Use ```-resume``` to continue from successful steps
 
 
-# 📄License
+# License
+## Primary License
+This pipeline is licensed under the **MIT License**.
+## Third-Party Licenses
+TrueOrtho automates the use of third-party tools. Users are responsible for complying with their respective licenses.
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+- Individual license files for these dependencies can be found in ```/third_party_licenses/```.
+
 
 # Cite Us
 
@@ -178,10 +177,5 @@ Sharaf, A., & Voolstra, C. R. (2025). SequAna-Ukon/TrueOrtho: 1.0.0. Zenodo. htt
 
 # Acknowledgments
 This work is supported through the Sequencing analysis (SequAna) core facility at the University of Konstanz [https://www.biologie.uni-konstanz.de/sequana/]
-
-- **eggNOG-mapper**: For functional annotations
-- **HMMER**: For domain detection
-- **DIAMOND**: For fast sequence searches
-- **Nextflow**: For workflow orchestration
   
 For more information or help, please contact [abdoallah.sharaf@uni-konstanz.de].
