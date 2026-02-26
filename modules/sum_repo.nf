@@ -1,5 +1,5 @@
 process GENERATE_SUMMARY_REPORT {
-    publishDir "${workflow.launchDir}/results", mode: 'copy'
+    publishDir "${params.outdir}", mode: 'copy'
 
     input:
     path homology_hits_lists
