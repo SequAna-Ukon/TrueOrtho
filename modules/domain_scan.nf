@@ -1,7 +1,7 @@
 process DOMAIN_SCAN {
     tag "${query.simpleName}_${species}"
     
-    publishDir "results/domain_scan/${query.simpleName}_${species}",
+    publishDir "${params.outdir}/domain_scan/${query.simpleName}_${species}",
         mode: 'copy',
         saveAs: { f -> f.endsWith('.log') ? null : f }
 
