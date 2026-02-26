@@ -2,9 +2,9 @@ process ORTHOLOG_ASSIGN {
     tag "${query.simpleName}_${species}"
     
     // Publish only the three key files
-    publishDir "results/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_orthologs.fa'
-    publishDir "results/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_hits.txt', optional: true
-    publishDir "results/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_kog_info.txt', optional: true
+    publishDir "${params.outdir}/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_orthologs.fa'
+    publishDir "${params.outdir}/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_hits.txt', optional: true
+    publishDir "${params.outdir}/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_kog_info.txt', optional: true
 
     input:
     tuple path(query), path(hits_fasta), val(threads), val(kog_id), val(species)
