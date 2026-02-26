@@ -19,6 +19,7 @@ workflow {
     params.threads   = params.threads ?: 10
     params.domain_db = params.domain_db ?: ""
     params.eggnog_db = params.eggnog_db ?: ""
+    params.outdir = params.outdir ?: "Results"
 
     // 1. Setup Input Channel
     input_ch = Channel.fromPath(csv_file_obj)
