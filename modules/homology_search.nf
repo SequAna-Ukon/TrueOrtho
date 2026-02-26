@@ -1,7 +1,7 @@
 process HOMOLOGY_SEARCH {
     
     tag "${query.simpleName}_${database.simpleName}"
-    publishDir "results/homology_search/${query.simpleName}_${database.simpleName}", 
+    publishDir "${params.outdir}/homology_search/${query.simpleName}_${database.simpleName}", 
         mode: 'copy',
         saveAs: { filename ->
             // Only keep hits FASTA and hits list, skip query/database files
