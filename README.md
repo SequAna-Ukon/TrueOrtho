@@ -44,6 +44,7 @@ query,database,kog_id,target_domain
 - database: Path to target species protein database (FASTA)
 - kog_id: Optional KOG/COG ID for ortholog assignment
 - target_domain: Optional comma-separated domain IDs for filtering
+    - If you have more than one domain, you must use quotes: ,"Dom1,Dom2".
 
 # ⚙️Parameters
 ## Required Parameters
