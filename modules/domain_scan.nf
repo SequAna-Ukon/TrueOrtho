@@ -32,16 +32,16 @@ process DOMAIN_SCAN {
         exit 0
     fi
 
-    # --- FIX: Database path relative to work/databases/ ---
     DB_PATH="${hmm_db_dir}/Pf_Sm"
     
+    # 1. Prepare required domains (Clean whitespace and split by comma)
     required_domains_file="required.list"
-    > "\$required_domains_file"
-
     if [ -n "${target_domain}" ] && [ "${target_domain}" != "null" ]; then
-        echo "${target_domain}" | tr ',' '\\n' | grep -v '^[[:space:]]*\$' > "\$required_domains_file"
+        # This part handles "Domain1, Domain2" by splitting at the comma and trimming spaces
+        echo "${target_domain}" | tr ',' '\\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*\$//' | grep -v '^[[:space:]]*\$' | sort -u > "\$required_domains_file"
         cp "\$required_domains_file" "${query.simpleName}_${species}_target_domains.txt"
     else
+        # Fallback: Scan the query protein to see what domains it has
         hmmscan --domtblout query_domains.tblout --noali -E 1e-5 --cpu ${threads} "\$DB_PATH" "${query}" > query_scan.log 2>&1
         if [ -s "query_domains.tblout" ]; then
             awk '\$1 !~ /^#/ {print \$1}' query_domains.tblout | sort -u > "\$required_domains_file"
@@ -49,34 +49,36 @@ process DOMAIN_SCAN {
         fi
     fi
 
+    # 2. Scan the candidate orthologs
     hmmscan --domtblout ortholog_domains.tblout --noali -E 1e-5 --cpu ${threads} "\$DB_PATH" "${orthologs_fa}" > ortholog_scan.log 2>&1
 
-    required_count=\$(wc -l < "\$required_domains_file")
-    matched_ids_file="matched_ids.tmp"
-    > "\$matched_ids_file"
+    # 3. Validation Logic: Identify sequences that contain ALL required domains
+    num_req=\$(wc -l < "\$required_domains_file")
+    
+    if [ "\$num_req" -eq 0 ]; then
+        cp "${orthologs_fa}" "\$OUT_FA"
+    else
+        # AWK Logic: 
+        # - Load required domains into an array (FNR==NR)
+        # - For each hit in the results, if it is a required domain, track it for that sequence
+        # - At the end, only print sequence IDs that have a match count equal to the required count
+        awk -v req_count="\$num_req" '
+            FNR==NR { req[\$1]; next } 
+            (\$1 in req) { matches[\$4][\$1] } 
+            END { 
+                for (seq in matches) {
+                    count = 0; for (d in matches[seq]) count++;
+                    if (count == req_count) print seq
+                }
+            }' "\$required_domains_file" ortholog_domains.tblout > matched_ids.tmp
 
-    seqkit seq --name --only-id "${orthologs_fa}" > all_ids.txt
-
-    while read -r seq_id; do
-        seq_domains=\$(awk -v seq="\$seq_id" '\$4 == seq && \$1 !~ /^#/ {print \$1}' ortholog_domains.tblout | sort -u)
-        missing_count=0
-        if [ "\$required_count" -gt 0 ]; then
-            while read -r req; do
-                if ! echo "\$seq_domains" | grep -qx "\$req"; then
-                    missing_count=\$((missing_count + 1))
-                fi
-            done < "\$required_domains_file"
+        if [ -s matched_ids.tmp ]; then
+            seqkit grep -f matched_ids.tmp "${orthologs_fa}" > "\$OUT_FA"
+            # Create a clean mapping of Sequence -> Found Domains
+            awk 'FNR==NR {ids[\$1]; next} (\$4 in ids) && (\$1 !~ /^#/) {print \$4 "\t" \$1}' matched_ids.tmp ortholog_domains.tblout | sort -u > "\$OUT_TXT"
         fi
-
-        if [ "\$missing_count" -eq 0 ]; then
-            echo "\$seq_id" >> "\$matched_ids_file"
-        fi
-    done < all_ids.txt
-
-    if [ -s "\$matched_ids_file" ]; then
-        seqkit grep -f "\$matched_ids_file" "${orthologs_fa}" > "\$OUT_FA"
-        awk 'FNR==NR {ids[\$1]; next} \$4 in ids && \$1 !~ /^#/ {print \$4 " " \$1}' "\$matched_ids_file" ortholog_domains.tblout | sort -u > "\$OUT_TXT"
-        mv ortholog_domains.tblout "${query.simpleName}_${species}_domains.tblout"
     fi
+
+    mv ortholog_domains.tblout "${query.simpleName}_${species}_domains.tblout"
     """
 }
