@@ -19,15 +19,14 @@ workflow {
     params.threads   = params.threads ?: 10
     params.domain_db = params.domain_db ?: ""
     params.eggnog_db = params.eggnog_db ?: ""
-    params.outdir = params.outdir ?: "Results"
-
+    params.outdir = params.outdir ?: "./Results"
     // 1. Setup Input Channel
     input_ch = Channel.fromPath(csv_file_obj)
-        .splitCsv(header:true)
+        .splitCsv(header:true, quote:'"')
         .map { row ->
             def q_file = file(row.query)
             def db_file = file(row.database)
-            tuple(q_file.simpleName, db_file.simpleName, q_file, db_file, row.kog_id ?: "", row.target_domain ?: "")
+            tuple(q_file.simpleName, db_file.simpleName, q_file, db_file, row.kog_id?.trim() ?: "", row.target_domain?.trim() ?: "")
         }
 
     // 2. Setup Databases (Passing workflow.workDir to place them in work/databases/)
