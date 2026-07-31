@@ -1,0 +1,7 @@
+databases/
+work/
+results/
+.nextflow*
+*.img
+*.sif
+*.tar

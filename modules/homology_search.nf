@@ -34,7 +34,7 @@ process HOMOLOGY_SEARCH {
     } {print}' $database > db_renamed.fasta
 
     # 2. Run jackhmmer
-    jackhmmer --tblout results.jack --cpu ${task.cpus} -N 10 --noali $query db_renamed.fasta
+    jackhmmer --tblout results.jack --cpu ${task.cpus} -N 5 -E 1e-5 --noali $query db_renamed.fasta
 
     # 3. Extract hit IDs (create hits list file)
     grep -v '^#' results.jack | awk '{print \$1}' | sort -u > ${query.simpleName}_vs_${database.simpleName}_hits.list

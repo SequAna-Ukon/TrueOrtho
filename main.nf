@@ -1,63 +1,115 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl=2
 
-include { HOMOLOGY_SEARCH } from './modules/homology_search.nf'
-include { DATABASE_SETUP } from './modules/database_setup.nf'
-include { ORTHOLOG_ASSIGN } from './modules/ortholog_assign.nf'
-include { DOMAIN_SCAN } from './modules/domain_scan.nf'
-include { GENERATE_SUMMARY_REPORT } from './modules/sum_repo.nf'
+// -----------------------------------------------------------------------------
+// Module Imports
+// -----------------------------------------------------------------------------
+include { DATABASE_SETUP }           from './modules/database_setup.nf'
+include { HOMOLOGY_SEARCH }          from './modules/homology_search.nf'
+include { ORTHOLOG_ASSIGN }          from './modules/ortholog_assign.nf'
+include { DOMAIN_SCAN }              from './modules/domain_scan.nf'
+include { STRUCTURAL_ORTHOLOGY_EVAL } from './modules/structure.nf'
+include { GENERATE_SUMMARY_REPORT }  from './modules/sum_repo.nf'
 
+// -----------------------------------------------------------------------------
+// Main Workflow Logic
+// -----------------------------------------------------------------------------
 workflow {
+
+    // 1. Parameter Validation & Channel Construction
     def input_path = params.input ?: params.csv_file
-    
+
     if (!input_path) {
-        error "ERROR: No input CSV specified. Please use --input <file>"
+        error "ERROR: No input CSV specified. Please provide --input <file.csv>"
     }
 
     csv_file_obj = file(input_path)
 
-    params.threads   = params.threads ?: 10
-    params.domain_db = params.domain_db ?: ""
-    params.eggnog_db = params.eggnog_db ?: ""
-    params.outdir = params.outdir ?: "./Results"
-    // 1. Setup Input Channel
+
+    // Parse CSV input file: columns -> query, database, kog_id, target_domain
     input_ch = Channel.fromPath(csv_file_obj)
-        .splitCsv(header:true, quote:'"')
+        .splitCsv(header: true, quote: '"')
         .map { row ->
-            def q_file = file(row.query)
+            def q_file  = file(row.query)
             def db_file = file(row.database)
-            tuple(q_file.simpleName, db_file.simpleName, q_file, db_file, row.kog_id?.trim() ?: "", row.target_domain?.trim() ?: "")
+            tuple(
+                q_file.simpleName,
+                db_file.simpleName,
+                q_file,
+                db_file,
+                row.kog_id?.trim() ?: "",
+                row.target_domain?.trim() ?: ""
+            )
         }
 
-    // 2. Setup Databases (Passing workflow.workDir to place them in work/databases/)
-    db_results = DATABASE_SETUP(params.eggnog_db, params.domain_db, workflow.workDir)
+    // 2. Setup Databases (eggNOG, HMM, Foldseek ProstT5)
+    db_results = DATABASE_SETUP(
+        params.eggnog_db ?: "",
+        params.domain_db ?: "",
+        params.prostt5_db ?: ""
+    )
 
-    // 3. Homology Search
-    homology_results = HOMOLOGY_SEARCH(input_ch.map { qid, sp, q, db, k, td -> tuple(q, db) })
+    // 3. Primary Homology Search (jackhmmer)
+    homology_results = HOMOLOGY_SEARCH(
+        input_ch.map { qid, sp, q, db, k, td -> tuple(q, db) }
+    )
 
-    // 4. Ortholog Assignment
+    // 4. EggNOG Ortholog Assignment
     ortho_input_ch = input_ch
         .map { qid, sp, q, db, k, td -> tuple(qid, sp, q, k) }
-        .join(homology_results.hits_fasta.map { q, db, fa -> tuple(q.simpleName, db.simpleName, fa) }, by: [0, 1])
+        .join(
+            homology_results.hits_fasta.map { q, db, fa -> tuple(q.simpleName, db.simpleName, fa) },
+            by: [0, 1]
+        )
         .map { qid, sp, q_file, k_id, hits_fa -> tuple(q_file, hits_fa, params.threads, k_id, sp) }
 
-    // Use the explicit path emitted from DATABASE_SETUP
-    ortholog_results = ORTHOLOG_ASSIGN(ortho_input_ch, db_results.egg_dir)
+    ortholog_results = ORTHOLOG_ASSIGN(
+        ortho_input_ch,
+        db_results.egg_dir
+    )
 
-    // 5. Domain Scan
+    // 5. Domain Scan & Domain Architecture Validation (HMMER)
     domain_input_ch = ortholog_results.orthologs_fa
         .filter { q, fa, sp -> fa.size() > 0 }
         .map { q, fa, sp -> tuple(q.simpleName, sp, q, fa) }
-        .join(input_ch.map { qid, sp, q, db, k, td -> tuple(qid, sp, td) }, by: [0, 1])
+        .join(
+            input_ch.map { qid, sp, q, db, k, td -> tuple(qid, sp, td) },
+            by: [0, 1]
+        )
         .map { qid, sp, q_file, ortho_fa, td -> tuple(q_file, ortho_fa, params.threads, td, sp) }
 
-    domain_results = DOMAIN_SCAN(domain_input_ch, db_results.hmm_dir)
+    domain_results = DOMAIN_SCAN(
+        domain_input_ch,
+        db_results.hmm_dir
+    )
 
-    // 6. Generate Summary Report
+    // 6. Collect FASTA Channels for Structural & Phylogenetic Evaluation
+    query_fastas_ch = input_ch
+        .map { qid, sp, q, db, k, td -> q }
+        .collect()
+        .unique()
+
+    filtered_orthologs_ch = domain_results.filtered_orthologs
+        .collect()
+        .ifEmpty([])
+
+    // 7. Structural, Embedding, and Phylogenetic Analysis
+    struct_results = STRUCTURAL_ORTHOLOGY_EVAL(
+        query_fastas_ch,
+        filtered_orthologs_ch,
+        db_results.prostt5_dir
+    )
+
+    // 8. Integrated Classification & HTML Report Generation
     GENERATE_SUMMARY_REPORT(
+        struct_results.forward_m8,
+        struct_results.recip_m8,
+        struct_results.esm_csv,
+        struct_results.treefile,
         homology_results.hits_list.collect().ifEmpty([]),
         ortholog_results.orthologs_fa.map { it[1] }.collect().ifEmpty([]),
         domain_results.filtered_orthologs.collect().ifEmpty([]),
-        domain_results.ortholog_domains.collect().ifEmpty([])
+        domain_results.ortholog_domains.collect().ifEmpty([]),
+        file("${projectDir}/scripts/classify_and_report.py")
     )
 }
