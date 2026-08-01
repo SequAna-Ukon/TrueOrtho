@@ -10,13 +10,12 @@ process DOMAIN_SCAN {
     path hmm_db_dir
     
     output:
-    path "${query.simpleName}_${species}_filtered_orthologs.fa", emit: filtered_orthologs
+    tuple val("${query.simpleName}"), val(species), path("${query.simpleName}_${species}_filtered_orthologs.fa"), emit: filtered_orthologs
     path "${query.simpleName}_${species}_ortholog_domains.txt", emit: ortholog_domains
     path "${query.simpleName}_${species}_domains.tblout", optional: true, emit: domains_tblout
     path "${query.simpleName}_${species}_query_domains.txt", optional: true, emit: query_domains
     path "${query.simpleName}_${species}_target_domains.txt", optional: true, emit: target_domains
 
-    conda "bioconda::hmmer=3.4 bioconda::seqkit=2.8.0"
 
     script:
     """
@@ -34,14 +33,13 @@ process DOMAIN_SCAN {
 
     DB_PATH="${hmm_db_dir}/Pf_Sm"
     
-    # 1. Prepare required domains (Clean whitespace and split by comma)
+    # 1. Prepare required domains 
     required_domains_file="required.list"
     if [ -n "${target_domain}" ] && [ "${target_domain}" != "null" ]; then
         # This part handles "Domain1, Domain2" by splitting at the comma and trimming spaces
         echo "${target_domain}" | tr ',' '\\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*\$//' | grep -v '^[[:space:]]*\$' | sort -u > "\$required_domains_file"
         cp "\$required_domains_file" "${query.simpleName}_${species}_target_domains.txt"
     else
-        # Fallback: Scan the query protein to see what domains it has
         hmmscan --domtblout query_domains.tblout --noali -E 1e-5 --cpu ${threads} "\$DB_PATH" "${query}" > query_scan.log 2>&1
         if [ -s "query_domains.tblout" ]; then
             awk '\$1 !~ /^#/ {print \$1}' query_domains.tblout | sort -u > "\$required_domains_file"
@@ -52,16 +50,12 @@ process DOMAIN_SCAN {
     # 2. Scan the candidate orthologs
     hmmscan --domtblout ortholog_domains.tblout --noali -E 1e-5 --cpu ${threads} "\$DB_PATH" "${orthologs_fa}" > ortholog_scan.log 2>&1
 
-    # 3. Validation Logic: Identify sequences that contain ALL required domains
+    # 3. Validation Logic
     num_req=\$(wc -l < "\$required_domains_file")
     
     if [ "\$num_req" -eq 0 ]; then
         cp "${orthologs_fa}" "\$OUT_FA"
     else
-        # AWK Logic: 
-        # - Load required domains into an array (FNR==NR)
-        # - For each hit in the results, if it is a required domain, track it for that sequence
-        # - At the end, only print sequence IDs that have a match count equal to the required count
         awk -v req_count="\$num_req" '
             FNR==NR { req[\$1]; next } 
             (\$1 in req) { matches[\$4][\$1] } 
@@ -74,7 +68,6 @@ process DOMAIN_SCAN {
 
         if [ -s matched_ids.tmp ]; then
             seqkit grep -f matched_ids.tmp "${orthologs_fa}" > "\$OUT_FA"
-            # Create a clean mapping of Sequence -> Found Domains
             awk 'FNR==NR {ids[\$1]; next} (\$4 in ids) && (\$1 !~ /^#/) {print \$4 "\t" \$1}' matched_ids.tmp ortholog_domains.tblout | sort -u > "\$OUT_TXT"
         fi
     fi

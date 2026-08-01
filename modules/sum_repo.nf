@@ -16,9 +16,9 @@ process GENERATE_SUMMARY_REPORT {
     output:
     path "final_orthology_evidence_report.csv", emit: report_csv
     path "orthology_evidence_plot.png",          emit: scatter_plot
-    path "annotated_orthology_tree.png",         emit: tree_plot
-    path "summary_counts.tsv",                  emit: summary_counts
-    path "summary_report.html",                 emit: html_report
+    path "annotated_tree_*.png", optional: true, emit: tree_plots
+    path "summary_counts.tsv",                   emit: summary_counts
+    path "summary_report.html",                  emit: html_report
 
     script:
     """
@@ -26,66 +26,67 @@ process GENERATE_SUMMARY_REPORT {
     set -euo pipefail
     shopt -s nullglob
 
-    # Fix Matplotlib and Fontconfig cache directory issues in Singularity
-    export MPLCONFIGDIR="/tmp/matplotlib_\${params.outdir}"
-    export FC_CACHEDIR="/tmp/fontconfig_\${params.outdir}"
+    # Fix Matplotlib and Fontconfig cache directory
+    export MPLCONFIGDIR="/tmp/matplotlib_${params.outdir}"
+    export FC_CACHEDIR="/tmp/fontconfig_${params.outdir}"
     mkdir -p "\$MPLCONFIGDIR" "\$FC_CACHEDIR"
 
     echo "[INFO] Running Python orthology classification script..."
-    
-    # 1. Execute classification using container-staged script file
+
+    # 1. Execute classification 
+
     python ${script_file} \
-        --forward-m8 "${forward_m8}" \
-        --recip-m8 "${recip_m8}" \
-        --esm-csv "${esm_csv}" \
-        --treefile "${treefile}" \
+        --forward-m8 *_fwd.m8 \
+        --recip-m8 *_recip.m8 \
+        --esm-csv *_esm_sim.csv \
+        --treefile *.treefile \
         --out-report "final_orthology_evidence_report.csv" \
         --out-plot "orthology_evidence_plot.png" \
-        --out-tree-plot "annotated_orthology_tree.png"
+        --out-tree-prefix "annotated_tree"
 
     echo "[INFO] Calculating sample statistics across all pipeline stages..."
 
-    # 2. Build summary counts TSV with Domain Screen step included
+    # 2. Build summary counts TSV 
     echo -e "Sample\tHomology_Hits\tEggNOG_Orthologs\tDomain_Screened\tFinal_Structural_Orthologs" > summary_counts.tsv
 
     hits_files=( *.list )
-    
+
     if [ \${#hits_files[@]} -gt 0 ]; then
         for hits_file in "\${hits_files[@]}"; do
             [ -f "\$hits_file" ] || continue
-            
+
             base_name=\$(basename "\$hits_file" _hits.list)
             base_name=\$(basename "\$base_name" .list)
 
             query=\$(echo "\$base_name" | sed 's/_vs_/ /' | cut -d' ' -f1)
             species=\$(echo "\$base_name" | sed 's/_vs_/ /' | cut -d' ' -f2)
             sample="\${query}_\${species}"
-            
+
             # 1. Initial Homology Hits
             hits_count=\$(wc -l < "\$hits_file" 2>/dev/null || echo "0")
-            
+
             # 2. Reciprocal / EggNOG Orthologs
             ortho_file="\${query}_\${species}_orthologs.fa"
             ortho_count=0
             if [ -f "\$ortho_file" ] && [ -s "\$ortho_file" ]; then
                 ortho_count=\$(seqkit seq --name --only-id "\$ortho_file" | wc -l 2>/dev/null || echo "0")
             fi
-            
-            # 3. Domain Screened (Sequences passing HMM domain filtering)
+
+            # 3. Domain Screened
             final_file="\${query}_\${species}_filtered_orthologs.fa"
             domain_count=0
             if [ -f "\$final_file" ] && [ -s "\$final_file" ]; then
                 domain_count=\$(seqkit seq --name --only-id "\$final_file" | wc -l 2>/dev/null || echo "0")
             fi
 
-            # 4. Final Structural True Orthologs (Ranked PRIMARY/SECONDARY in evidence report)
+            # 4. Final Structural True Orthologs
             final_struct_count=0
             if [ -f "final_orthology_evidence_report.csv" ] && [ -f "\$final_file" ]; then
                 seqkit seq --name --only-id "\$final_file" > "sample_ids.tmp"
-                final_struct_count=\$(awk -F',' 'NR==FNR {ids[\$1]=1; next} (\$1 in ids) && (\$6 ~ /PRIMARY|SECONDARY/) {count++} END {print count+0}' "sample_ids.tmp" final_orthology_evidence_report.csv)
+                final_struct_count=\$(awk -F',' 'NR==FNR {ids[\$1]=1; next} (\$1 in ids) && (\$6 ~ /PRIMARY|SECONDARY|CO_ORTHOLOG/) {count++} END {print count+0}' "sample_ids.tmp" final_orthology_evidence_report.csv)
                 rm -f "sample_ids.tmp"
             fi
-            
+
             echo -e "\$sample\t\$hits_count\t\$ortho_count\t\$domain_count\t\$final_struct_count" >> summary_counts.tsv
         done
     fi
@@ -123,7 +124,7 @@ process GENERATE_SUMMARY_REPORT {
 <div class="container">
     <h1>TrueOrtho Pipeline Summary & Classification Report</h1>
     <p><strong>Execution Date:</strong> SYSTEM_DATE_PLACEHOLDER</p>
-    
+
     <div class="section">
         <h2>Orthology Filtering Funnel Counts</h2>
         <table>
@@ -142,7 +143,7 @@ EOF
     curr_date=\$(date)
     sed -i "s/SYSTEM_DATE_PLACEHOLDER/\$curr_date/g" summary_report.html
 
-    awk -F'\t' 'NR>1 { print "<tr><td><b>" \$1 "</b></td><td>" \$2 "</td><td>" \$3 "</td><td>" \$4 "</td><td><b style=\"color:#2b6cb0;\">" \$5 "</b></td></tr>" }' summary_counts.tsv >> summary_report.html
+    awk -F'\t' 'NR>1 { print "<tr><td><b>" \$1 "</b></td><td>" \$2 "</td><td>" \$3 "</td><td>" \$4 "</td><td><b style=\\"color:#2b6cb0;\\">" \$5 "</b></td></tr>" }' summary_counts.tsv >> summary_report.html
 
     cat >> summary_report.html << 'EOF'
             </tbody>
@@ -163,44 +164,31 @@ EOF
 EOF
     fi
 
-    # Embed Phylogenetic Tree Plot if generated
-    if [ -f "annotated_orthology_tree.png" ]; then
-        tree_b64=\$(base64 -w 0 "annotated_orthology_tree.png" 2>/dev/null || base64 "annotated_orthology_tree.png")
-        cat >> summary_report.html << EOF
-    <div class="section">
-        <h2>2. Annotated Phylogenetic Tree (IQ-TREE)</h2>
-        <div class="img-card">
-            <img src="data:image/png;base64,\${tree_b64}" alt="Annotated Orthology Tree" />
-        </div>
-    </div>
-EOF
-    fi
-
     # Append per-sample detailed sections with full structural table integration
     cat >> summary_report.html << 'EOF'
     <div class="section">
-        <h2>3. Detailed Sample Results & Integrated Evidence Classification</h2>
+        <h2>2. Detailed Sample Results & Integrated Evidence Classification</h2>
 EOF
 
     if [ \${#hits_files[@]} -gt 0 ]; then
         for hits_file in "\${hits_files[@]}"; do
             [ -f "\$hits_file" ] || continue
-            
+
             base_name=\$(basename "\$hits_file" _hits.list)
             base_name=\$(basename "\$base_name" .list)
 
             query=\$(echo "\$base_name" | sed 's/_vs_/ /' | cut -d' ' -f1)
             species=\$(echo "\$base_name" | sed 's/_vs_/ /' | cut -d' ' -f2)
             sample="\${query}_\${species}"
-            
+
             ortho_file="\${query}_\${species}_orthologs.fa"
             final_file="\${query}_\${species}_filtered_orthologs.fa"
             domain_file="\${query}_\${species}_ortholog_domains.txt"
-            
+
             hits_count=\$(wc -l < "\$hits_file" 2>/dev/null || echo "0")
             ortho_count=\$(if [ -f "\$ortho_file" ] && [ -s "\$ortho_file" ]; then seqkit seq --name --only-id "\$ortho_file" | wc -l 2>/dev/null || echo "0"; else echo "0"; fi)
             domain_count=\$(if [ -f "\$final_file" ] && [ -s "\$final_file" ]; then seqkit seq --name --only-id "\$final_file" | wc -l 2>/dev/null || echo "0"; else echo "0"; fi)
-            
+
             cat >> summary_report.html << EOF
         <div class="sample-card">
             <h3>Sample: \$sample</h3>
@@ -255,14 +243,14 @@ EOF
                 }
                 FNR>1 {
                     target = \$1;
-                    if (!(target in valid_targets)) continue;
+                    if (!(target in valid_targets)) next;
 
                     esm = \$2;
                     struct = \$3;
                     conf = \$4;
                     rbh = \$5;
                     class = \$6;
-                    
+
                     gsub(/\r/, "", class);
 
                     badge_class = "badge-other";
@@ -277,8 +265,8 @@ EOF
                           "<td>" struct "</td>" \
                           "<td><b>" conf "</b></td>" \
                           "<td>" rbh "</td>" \
-                          "<td><span class=\"domains\">" target_doms "</span></td>" \
-                          "<td><span class=\"badge " badge_class "\">" class "</span></td>" \
+                          "<td><span class=\\"domains\\">" target_doms "</span></td>" \
+                          "<td><span class=\\"badge " badge_class "\\">" class "</span></td>" \
                           "</tr>";
                 }' "sample_targets.tmp" final_orthology_evidence_report.csv >> summary_report.html
 
@@ -291,6 +279,17 @@ EOF
             else
                 cat >> summary_report.html << EOF
             <p><em>No structural evidence data recorded for this sample.</em></p>
+EOF
+            fi
+
+            tree_file="annotated_tree_\${query}.png"
+            if [ -f "\$tree_file" ]; then
+                tree_b64=\$(base64 -w 0 "\$tree_file" 2>/dev/null || base64 "\$tree_file")
+                cat >> summary_report.html << EOF
+            <h4>Annotated Phylogenetic Tree (IQ-TREE) — Query: \$query</h4>
+            <div class="img-card">
+                <img src="data:image/png;base64,\${tree_b64}" alt="Annotated Tree for \$query" />
+            </div>
 EOF
             fi
 

@@ -13,12 +13,6 @@ process DATABASE_SETUP {
     path "prostt5_model",     emit: prostt5_dir
 
     script:
-    // Update USER, REPO, and BRANCH to match your GitHub details
-    def github_user   = "SequAna-Ukon"
-    def github_repo   = "TrueOrtho"
-    def github_branch = "main"
-    def raw_github_url = "https://raw.githubusercontent.com/${github_user}/${github_repo}/${github_branch}/databases/Pf_Sm"
-
     """
     #!/bin/bash
     set -euo pipefail
@@ -37,27 +31,48 @@ process DATABASE_SETUP {
         cd ..
     fi
 
-    # 2. HMM Setup (GitHub Fallback)
+    # 2. HMM Setup
     mkdir -p hmm_database
 
+    copy_or_decompress() {
+        local src="\$1"
+        if [[ "\$src" == *.gz ]]; then
+            echo "[INFO] Decompressing \$src -> hmm_database/Pf_Sm"
+            gzip -dc "\$src" > hmm_database/Pf_Sm
+        else
+            echo "[INFO] Copying \$src -> hmm_database/Pf_Sm"
+            cp "\$src" hmm_database/Pf_Sm
+        fi
+    }
+
     if [ -f "${domain_db}" ]; then
-        echo "[INFO] Using existing local HMM file: ${domain_db}"
-        cp \$(readlink -f "${domain_db}") hmm_database/Pf_Sm
+        echo "[INFO] Using user-specified local HMM file: ${domain_db}"
+        copy_or_decompress \$(readlink -f "${domain_db}")
 
     elif [ -d "${domain_db}" ]; then
-        echo "[INFO] Using HMM file from directory: ${domain_db}"
-        found=\$(find "${domain_db}" -name "*.hmm" -type f -o -name "Pf_Sm*" -type f | head -1)
-        cp \$(readlink -f "\$found") hmm_database/Pf_Sm
+        echo "[INFO] Searching for HMM file in directory: ${domain_db}"
+        found=\$(find "${domain_db}" -maxdepth 2 -type f -name "*.hmm*" -o -name "Pf_Sm*" | head -1)
+        if [ -n "\$found" ]; then
+            copy_or_decompress \$(readlink -f "\$found")
+        else
+            echo "[ERROR] No matching HMM file found in directory ${domain_db}" >&2
+            exit 1
+        fi
+
+    elif [ -f "${projectDir}/databases/Pf_Sm.gz" ]; then
+        echo "[INFO] Found repo database at ${projectDir}/databases/Pf_Sm.gz"
+        copy_or_decompress "${projectDir}/databases/Pf_Sm.gz"
 
     elif [ -f "${projectDir}/databases/Pf_Sm" ]; then
         echo "[INFO] Found repo database at ${projectDir}/databases/Pf_Sm"
-        cp "${projectDir}/databases/Pf_Sm" hmm_database/Pf_Sm
+        copy_or_decompress "${projectDir}/databases/Pf_Sm"
 
     else
-        echo "[INFO] HMM file not found locally. Downloading from GitHub..."
-        wget -q "${raw_github_url}" -O hmm_database/Pf_Sm
+        echo "[ERROR] HMM database not found! Checked --domain_db and ${projectDir}/databases/Pf_Sm.gz" >&2
+        exit 1
     fi
 
+    echo "[INFO] Formatting HMM database with hmmpress..."
     hmmpress -f hmm_database/Pf_Sm
 
     # 3. Foldseek ProstT5 Setup

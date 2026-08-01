@@ -4,11 +4,11 @@ process HOMOLOGY_SEARCH {
     publishDir "${params.outdir}/homology_search/${query.simpleName}_${database.simpleName}", 
         mode: 'copy',
         saveAs: { filename ->
-            // Only keep hits FASTA and hits list, skip query/database files
+    
             if (filename.endsWith('_hits.fa') || filename.endsWith('_hits.list')) {
                 return filename
             }
-            return null  // Don't copy query.fsa, database.fasta, etc.
+            return null  
         }
 
     input:
@@ -17,8 +17,6 @@ process HOMOLOGY_SEARCH {
     output:
     tuple path(query), path(database), path("${query.simpleName}_vs_${database.simpleName}_hits.fa"), emit: hits_fasta
     path("${query.simpleName}_vs_${database.simpleName}_hits.list"), emit: hits_list
-
-    conda "bioconda::hmmer=3.4"
 
     script:
     """
