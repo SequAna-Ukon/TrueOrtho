@@ -164,10 +164,35 @@ EOF
 EOF
     fi
 
+    # Embed one Phylogenetic Tree per query (not per species-sample)
+    tree_files=( annotated_tree_*.png )
+    if [ \${#tree_files[@]} -gt 0 ]; then
+        cat >> summary_report.html << 'EOF'
+    <div class="section">
+        <h2>2. Per-Query Phylogenetic Trees (IQ-TREE)</h2>
+EOF
+        for tree_file in "\${tree_files[@]}"; do
+            [ -f "\$tree_file" ] || continue
+            tree_query=\$(basename "\$tree_file" .png)
+            tree_query=\${tree_query#annotated_tree_}
+
+            tree_b64=\$(base64 -w 0 "\$tree_file" 2>/dev/null || base64 "\$tree_file")
+            cat >> summary_report.html << EOF
+        <div class="img-card">
+            <h3>Query: \$tree_query</h3>
+            <img src="data:image/png;base64,\${tree_b64}" alt="Annotated Tree for \$tree_query" />
+        </div>
+EOF
+        done
+        cat >> summary_report.html << 'EOF'
+    </div>
+EOF
+    fi
+
     # Append per-sample detailed sections with full structural table integration
     cat >> summary_report.html << 'EOF'
     <div class="section">
-        <h2>2. Detailed Sample Results & Integrated Evidence Classification</h2>
+        <h2>3. Detailed Sample Results & Integrated Evidence Classification</h2>
 EOF
 
     if [ \${#hits_files[@]} -gt 0 ]; then
@@ -279,17 +304,6 @@ EOF
             else
                 cat >> summary_report.html << EOF
             <p><em>No structural evidence data recorded for this sample.</em></p>
-EOF
-            fi
-
-            tree_file="annotated_tree_\${query}.png"
-            if [ -f "\$tree_file" ]; then
-                tree_b64=\$(base64 -w 0 "\$tree_file" 2>/dev/null || base64 "\$tree_file")
-                cat >> summary_report.html << EOF
-            <h4>Annotated Phylogenetic Tree (IQ-TREE) — Query: \$query</h4>
-            <div class="img-card">
-                <img src="data:image/png;base64,\${tree_b64}" alt="Annotated Tree for \$query" />
-            </div>
 EOF
             fi
 
