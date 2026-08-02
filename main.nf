@@ -1,19 +1,14 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl=2
 
-// -----------------------------------------------------------------------------
-// Module Imports
-// -----------------------------------------------------------------------------
-include { DATABASE_SETUP }           from './modules/database_setup.nf'
-include { HOMOLOGY_SEARCH }          from './modules/homology_search.nf'
-include { ORTHOLOG_ASSIGN }          from './modules/ortholog_assign.nf'
-include { DOMAIN_SCAN }              from './modules/domain_scan.nf'
+include { DATABASE_SETUP }            from './modules/database_setup.nf'
+include { HOMOLOGY_SEARCH }           from './modules/homology_search.nf'
+include { ORTHOLOG_ASSIGN }           from './modules/ortholog_assign.nf'
+include { DOMAIN_SCAN }               from './modules/domain_scan.nf'
 include { STRUCTURAL_ORTHOLOGY_EVAL } from './modules/structure.nf'
-include { GENERATE_SUMMARY_REPORT }  from './modules/sum_repo.nf'
+include { GENERATE_SUMMARY_REPORT }   from './modules/sum_repo.nf'
 
-// -----------------------------------------------------------------------------
-// Main Workflow Logic
-// -----------------------------------------------------------------------------
+
 workflow {
 
     // 1. Parameter Validation & Channel Construction
@@ -25,8 +20,12 @@ workflow {
 
     csv_file_obj = file(input_path)
 
+    no_file_placeholder = file("${projectDir}/assets/NO_FILE")
+    if (!no_file_placeholder.exists()) {
+        no_file_placeholder.parent.mkdirs()
+        no_file_placeholder.text = ''
+    }
 
-    // Parse CSV input file: columns -> query, database, kog_id, target_domain
     input_ch = Channel.fromPath(csv_file_obj)
         .splitCsv(header: true, quote: '"')
         .map { row ->
@@ -49,7 +48,7 @@ workflow {
         params.prostt5_db ?: ""
     )
 
-    // 3. Primary Homology Search (jackhmmer)
+    // 3. Homology Search (jackhmmer)
     homology_results = HOMOLOGY_SEARCH(
         input_ch.map { qid, sp, q, db, k, td -> tuple(q, db) }
     )
@@ -83,32 +82,33 @@ workflow {
         db_results.hmm_dir
     )
 
-    // 6. Collect FASTA Channels for Structural & Phylogenetic Evaluation
-    query_fastas_ch = input_ch
-        .map { qid, sp, q, db, k, td -> q }
-        .collect()
-        .unique()
-
-    filtered_orthologs_ch = domain_results.filtered_orthologs
-        .collect()
-        .ifEmpty([])
+    // 6. Channel Pairing & Grouping
+    struct_input_ch = input_ch
+        .map { row -> tuple(row[0], row[1], row[2]) }
+        .join(
+            domain_results.filtered_orthologs.map { q, sp, fa -> tuple(q, sp, fa) },
+            by: [0, 1],
+            remainder: true
+        )
+        .map { qid, sp, q_file, fa -> tuple(qid, q_file, sp, fa ?: no_file_placeholder) }
+        .groupTuple(by: [0, 1])
 
     // 7. Structural, Embedding, and Phylogenetic Analysis
+
     struct_results = STRUCTURAL_ORTHOLOGY_EVAL(
-        query_fastas_ch,
-        filtered_orthologs_ch,
+        struct_input_ch,
         db_results.prostt5_dir
     )
 
     // 8. Integrated Classification & HTML Report Generation
     GENERATE_SUMMARY_REPORT(
-        struct_results.forward_m8,
-        struct_results.recip_m8,
-        struct_results.esm_csv,
-        struct_results.treefile,
+        struct_results.forward_m8.collect().ifEmpty([]),
+        struct_results.recip_m8.collect().ifEmpty([]),
+        struct_results.esm_csv.collect().ifEmpty([]),
+        struct_results.treefile.collect().ifEmpty([]),
         homology_results.hits_list.collect().ifEmpty([]),
         ortholog_results.orthologs_fa.map { it[1] }.collect().ifEmpty([]),
-        domain_results.filtered_orthologs.collect().ifEmpty([]),
+        domain_results.filtered_orthologs.map { it[2] }.collect().ifEmpty([]),
         domain_results.ortholog_domains.collect().ifEmpty([]),
         file("${projectDir}/scripts/classify_and_report.py")
     )
