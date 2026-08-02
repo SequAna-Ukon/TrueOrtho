@@ -39,8 +39,8 @@ process STRUCTURAL_ORTHOLOGY_EVAL {
 
         if [ "\$cand_count" -eq 0 ]; then
             echo "[WARNING] No candidate orthologs for ${qid} vs \${sp} — skipping Foldseek/ESM for this species."
-            touch "${qid}_\${sp}_fwd.m8" "${qid}_\${sp}_recip.m8"
-            echo "target,esm2_cosine_sim" > "${qid}_\${sp}_esm_sim.csv"
+            touch "${qid}_vs_\${sp}_fwd.m8" "${qid}_vs_\${sp}_recip.m8"
+            echo "target,esm2_cosine_sim" > "${qid}_vs_\${sp}_esm_sim.csv"
         else
             mkdir -p "tmp_fs_\${sp}" "foldseek_db_\${sp}" "foldseek_out_\${sp}"
 
@@ -48,17 +48,17 @@ process STRUCTURAL_ORTHOLOGY_EVAL {
             foldseek createdb "candidates_\${sp}.fa" "foldseek_db_\${sp}/targetDB" --prostt5-model ${prostt5_model} --threads ${task.cpus}
 
             foldseek search "foldseek_db_\${sp}/queryDB" "foldseek_db_\${sp}/targetDB" "foldseek_out_\${sp}/aln_db" "tmp_fs_\${sp}" -a --threads ${task.cpus}
-            foldseek convertalis "foldseek_db_\${sp}/queryDB" "foldseek_db_\${sp}/targetDB" "foldseek_out_\${sp}/aln_db" "${qid}_\${sp}_fwd.m8" --format-output "query,target,pident,alnlen,bits,evalue"
+            foldseek convertalis "foldseek_db_\${sp}/queryDB" "foldseek_db_\${sp}/targetDB" "foldseek_out_\${sp}/aln_db" "${qid}_vs_\${sp}_fwd.m8" --format-output "query,target,pident,alnlen,bits,evalue"
 
             foldseek search "foldseek_db_\${sp}/targetDB" "foldseek_db_\${sp}/queryDB" "foldseek_out_\${sp}/recip_aln_db" "tmp_fs_\${sp}" -a --threads ${task.cpus}
-            foldseek convertalis "foldseek_db_\${sp}/targetDB" "foldseek_db_\${sp}/queryDB" "foldseek_out_\${sp}/recip_aln_db" "${qid}_\${sp}_recip.m8" --format-output "query,target,pident,alnlen,bits,evalue"
+            foldseek convertalis "foldseek_db_\${sp}/targetDB" "foldseek_db_\${sp}/queryDB" "foldseek_out_\${sp}/recip_aln_db" "${qid}_vs_\${sp}_recip.m8" --format-output "query,target,pident,alnlen,bits,evalue"
 
             export HF_HOME="\$PWD/.cache_\${sp}"
             mkdir -p "\$HF_HOME"
             python ${projectDir}/scripts/calculate_esm_embeddings.py \
                 --query query_fa.fa \
                 --candidates "candidates_\${sp}.fa" \
-                --output "${qid}_\${sp}_esm_sim.csv"
+                --output "${qid}_vs_\${sp}_esm_sim.csv"
         fi
 
             cat "candidates_\${sp}.fa" >> all_candidates.fa

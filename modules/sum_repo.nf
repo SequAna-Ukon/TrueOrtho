@@ -15,7 +15,7 @@ process GENERATE_SUMMARY_REPORT {
 
     output:
     path "final_orthology_evidence_report.csv", emit: report_csv
-    path "orthology_evidence_plot.png",          emit: scatter_plot
+    path "orthology_evidence_plot_*.png", optional: true, emit: scatter_plots
     path "annotated_tree_*.png", optional: true, emit: tree_plots
     path "summary_counts.tsv",                   emit: summary_counts
     path "summary_report.html",                  emit: html_report
@@ -41,7 +41,7 @@ process GENERATE_SUMMARY_REPORT {
         --esm-csv *_esm_sim.csv \
         --treefile *.treefile \
         --out-report "final_orthology_evidence_report.csv" \
-        --out-plot "orthology_evidence_plot.png" \
+        --out-plot-prefix "orthology_evidence_plot" \
         --out-tree-prefix "annotated_tree"
 
     echo "[INFO] Calculating sample statistics across all pipeline stages..."
@@ -151,15 +151,27 @@ EOF
     </div>
 EOF
 
-    # Embed Scatter Plot if generated
-    if [ -f "orthology_evidence_plot.png" ]; then
-        scatter_b64=\$(base64 -w 0 "orthology_evidence_plot.png" 2>/dev/null || base64 "orthology_evidence_plot.png")
-        cat >> summary_report.html << EOF
+    # Embed one Scatter Plot per query
+    scatter_files=( orthology_evidence_plot_*.png )
+    if [ \${#scatter_files[@]} -gt 0 ]; then
+        cat >> summary_report.html << 'EOF'
     <div class="section">
         <h2>1. Structural & Sequence Embedding Evidence Mapping</h2>
+EOF
+        for scatter_file in "\${scatter_files[@]}"; do
+            [ -f "\$scatter_file" ] || continue
+            scatter_query=\$(basename "\$scatter_file" .png)
+            scatter_query=\${scatter_query#orthology_evidence_plot_}
+
+            scatter_b64=\$(base64 -w 0 "\$scatter_file" 2>/dev/null || base64 "\$scatter_file")
+            cat >> summary_report.html << EOF
         <div class="img-card">
-            <img src="data:image/png;base64,\${scatter_b64}" alt="Orthology Evidence Scatter Plot" />
+            <h3>Query: \$scatter_query</h3>
+            <img src="data:image/png;base64,\${scatter_b64}" alt="Orthology Evidence Scatter Plot for \$scatter_query" />
         </div>
+EOF
+        done
+        cat >> summary_report.html << 'EOF'
     </div>
 EOF
     fi
