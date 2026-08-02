@@ -3,7 +3,7 @@ process STRUCTURAL_ORTHOLOGY_EVAL {
     publishDir "${params.outdir}/structural_and_phylo_analysis/${qid}", mode: 'copy'
 
     input:
-    tuple val(qid), path(query_fasta), val(sp_list), path(fa_list)
+    tuple val(qid), path(query_fasta), val(sp_list), path(fa_list, stageAs: "cand_input_*")
     path prostt5_model
 
     output:
@@ -28,7 +28,7 @@ process STRUCTURAL_ORTHOLOGY_EVAL {
         sp="\${sp_arr[\$i]}"
         fa_file="\${fa_arr[\$i]}"
 
-        if [ -f "\$fa_file" ] && [ "\$fa_file" != "NO_FILE" ]; then
+        if [ -s "\$fa_file" ]; then
             cat "\$fa_file" | seqkit rmdup -s > "candidates_\${sp}.fa"
         else
             touch "candidates_\${sp}.fa"
