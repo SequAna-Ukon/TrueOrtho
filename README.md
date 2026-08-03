@@ -68,26 +68,6 @@ nextflow run main.nf \
     --threads 12
 ````
 
-## Prerequisites
-
-TrueOrtho requires the following software:
-
-* **Nextflow** (≥ 20.07.1)
-* **Conda**, **Mamba**, **Docker**, or **Singularity** for dependency management
-
----
-
-## Basic Usage
-
-```bash
-nextflow run main.nf \
-    --input input.csv \
-    --eggnog_db /path/to/eggnog_db \
-    --domain_db /path/to/pfam_smart.hmm \
-    --threads 12
-```
-
-
 ## Input CSV Format
 
 Create a CSV file defining one or more query–database pairs.
