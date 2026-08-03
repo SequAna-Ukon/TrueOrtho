@@ -92,7 +92,7 @@ query,database,kog_id,target_domain
 
 ---
 
-## ⚙️ Pipeline Parameters
+## Pipeline Parameters
 
 ### Required Parameters
 
@@ -135,16 +135,13 @@ The TrueOrtho workflow progressively refines candidate proteins through multiple
 * **Phylogenetic Validation** – IQ-TREE phylogenies are generated for the final ortholog set and included in the interactive HTML report as supporting evolutionary evidence. These trees are intended for **validation and visualization only** and are **not** used for ortholog inference or candidate filtering.
 
 
-💡 Key Features & Tips
 
-Nextflow DSL2 Support: Fully modular process design built for scalability.Resume Capability: Run with -resume to restart from interrupted steps without recalculating complete stages.Performance Optimization: Provide local paths for --eggnog_db and --domain_db to bypass download overhead on large clusters.
-
-
-📜 Citation & LicenseLicense
+# Citation & License
+## License
 
 This pipeline is open-source and released under the MIT License. Third-party dependencies maintain their respective open-source licenses (located under /third_party_licenses/).
 
-Citation
+## Citation
 
 If you use TrueOrtho in your research, please cite:Sharaf, A., & Voolstra, C. R. (2025). SequAna-Ukon/TrueOrtho (Version 2.0.0). Zenodo. https://doi.org/10.5281/zenodo.17867442Acknowledgments & SupportSupported by the Sequencing Analysis (SequAna) Core Facility at the University of Konstanz (biologie.uni-konstanz.de/sequana).
 
