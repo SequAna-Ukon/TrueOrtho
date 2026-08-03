@@ -80,10 +80,19 @@ process GENERATE_SUMMARY_REPORT {
             fi
 
             # 4. Final Structural True Orthologs
+            #
+            # NOTE (fix): final_orthology_evidence_report.csv columns are:
+            #   1:target 2:esm2_cosine_sim 3:struct_score 4:orthology_confidence_score
+            #   5:is_rbh 6:is_self_hit 7:classification
+            # classification is column 7, not 6 (it shifted when is_self_hit was added
+            # to classify_and_report.py). Also, self-hits (a query found against its
+            # own source species) are trivially the highest-confidence ortholog case,
+            # not a failure case, so SELF_HIT rows now count toward the final total
+            # alongside PRIMARY/SECONDARY/CO_ORTHOLOG classes.
             final_struct_count=0
             if [ -f "final_orthology_evidence_report.csv" ] && [ -f "\$final_file" ]; then
                 seqkit seq --name --only-id "\$final_file" > "sample_ids.tmp"
-                final_struct_count=\$(awk -F',' 'NR==FNR {ids[\$1]=1; next} (\$1 in ids) && (\$6 ~ /PRIMARY|SECONDARY|CO_ORTHOLOG/) {count++} END {print count+0}' "sample_ids.tmp" final_orthology_evidence_report.csv)
+                final_struct_count=\$(awk -F',' 'NR==FNR {ids[\$1]=1; next} (\$1 in ids) && (\$7 ~ /PRIMARY|SECONDARY|CO_ORTHOLOG|SELF_HIT/) {count++} END {print count+0}' "sample_ids.tmp" final_orthology_evidence_report.csv)
                 rm -f "sample_ids.tmp"
             fi
 
@@ -117,6 +126,7 @@ process GENERATE_SUMMARY_REPORT {
         .badge { font-weight: bold; padding: 3px 8px; border-radius: 4px; font-size: 0.82em; text-transform: uppercase; display: inline-block; }
         .badge-primary { background: #c6f6d5; color: #22543d; }
         .badge-secondary { background: #ebf8ff; color: #2c5282; }
+        .badge-self { background: #fefcbf; color: #744210; }
         .badge-other { background: #edf2f7; color: #4a5568; }
     </style>
 </head>
@@ -286,12 +296,13 @@ EOF
                     struct = \$3;
                     conf = \$4;
                     rbh = \$5;
-                    class = \$6;
+                    class = \$7;
 
                     gsub(/\r/, "", class);
 
                     badge_class = "badge-other";
-                    if (class ~ /PRIMARY/) { badge_class = "badge-primary"; }
+                    if (class ~ /SELF_HIT/) { badge_class = "badge-self"; }
+                    else if (class ~ /PRIMARY/) { badge_class = "badge-primary"; }
                     else if (class ~ /SECONDARY/) { badge_class = "badge-secondary"; }
 
                     target_doms = (dom_map[target] != "") ? dom_map[target] : "No domains";
