@@ -65,8 +65,15 @@ def main():
     else:
         df_esm = pd.DataFrame(columns=["target", "esm2_cosine_sim", "qid"])
 
-    # 4. Merge Metrics (join on target AND qid, so per-query separation is preserved)
-    self_hit_targets = set(df_fs.loc[df_fs["query"] == df_fs["target"], "target"].astype(str)) if not df_fs.empty else set()
+    # 4. Merge Metrics
+    if not df_fs.empty:
+        self_mask = df_fs["query"] == df_fs["target"]
+        self_hit_pairs = set(
+            zip(df_fs.loc[self_mask, "qid"].astype(str), df_fs.loc[self_mask, "target"].astype(str))
+        )
+    else:
+        self_hit_pairs = set()
+
     df_final = pd.merge(df_esm, df_fs[["target", "qid", "struct_score"]], on=["target", "qid"], how="outer").fillna(0)
 
     if not df_final.empty:
@@ -78,13 +85,15 @@ def main():
 
         df_final["orthology_confidence_score"] = ((df_final["struct_score"] * 0.40) + (df_final["esm2_cosine_sim"] * 0.40) + 0.20).round(4)
         df_final["is_rbh"] = df_final["target"].apply(lambda x: "YES" if str(x) in rbh_targets else "NO")
+        df_final["is_self_hit"] = df_final.apply(
+            lambda r: (str(r["qid"]), str(r["target"])) in self_hit_pairs, axis=1
+        )
 
-        if self_hit_targets:
-            candidates = df_final[~df_final["target"].isin(self_hit_targets)].copy()
-        else:
-            candidates = df_final.copy()
+        candidates = df_final.copy()
 
         def classify_ortholog(row):
+            if row["is_self_hit"]:
+                return "SELF_HIT_QUERY_SPECIES"
             if row["is_rbh"] == "YES" and row["esm2_cosine_sim"] >= 0.90 and row["struct_score"] >= 0.40:
                 return "PRIMARY_TRUE_ORTHOLOG"
             elif row["esm2_cosine_sim"] >= 0.85 and row["struct_score"] >= 0.35:
@@ -100,7 +109,7 @@ def main():
         else:
             candidates["classification"] = []
     else:
-        candidates = pd.DataFrame(columns=["target", "qid", "esm2_cosine_sim", "struct_score", "orthology_confidence_score", "is_rbh", "classification"])
+        candidates = pd.DataFrame(columns=["target", "qid", "esm2_cosine_sim", "struct_score", "orthology_confidence_score", "is_rbh", "is_self_hit", "classification"])
 
     candidates.drop(columns=["qid"]).to_csv(args.out_report, index=False)
 
