@@ -52,27 +52,85 @@ Generates the final evidence report by integrating all available evidence into a
 
 ## Prerequisites
 
-Nextflow ($\ge$ 20.07.1), Docker, or Singularity for dependency management.
+TrueOrtho 2.0 requires the following software:
 
-##Basic Usage
+- **Nextflow** (≥ 20.07.1)
+- **Docker**, or **Singularity** for dependency management
+
+## Basic Usage
 
 ````Bash
-
 nextflow run main.nf \
-  --input input.csv \
-  --eggnog_db /path/to/eggnog_db \
-  --domain_db /path/to/pfam_smart.hmm \
-  --threads 12
+    --input input.csv \
+    --eggnog_db /path/to/eggnog_db \
+    --domain_db /path/to/pfam_smart.hmm \
+    --prostt5_db /path/to/prostt5_db \
+    --threads 12
 ````
-📋 Input CSV FormatCreate an input CSV defining your query-database pairs:Code snippetquery,database,kog_id,target_domain
-````bash
-../GS_q.fsa,../Smic.fasta,,
-../GOGAT_q.fsa,../Smic.fasta,,
-../GDH_q.fsa,../Smic.fasta,,
-../NIR_q.fsa,../Smic.fasta,,
-../NR_q.fsa,../Smic.fasta,,"PF00069,PF00070"
-````
-Column Specificationsquery: Path to query protein sequence FASTA file (Required).database: Path to target species proteome FASTA file (Required).kog_id: Optional KOG/COG ID for explicit target assignment.target_domain: Optional comma-separated domain IDs (e.g., Pfam/SMART accessions) for domain conservation filtering. Enclose multiple domains in quotes ("Dom1,Dom2").⚙️ Pipeline ParametersRequired ParametersParameterDescription--inputPath to input CSV file containing query-database pairs.Database & Resource ParametersParameterDefaultDescription--eggnog_dbAuto-download (v5.0.2)Directory path to pre-downloaded eggNOG database.--domain_dbAuto-download (Pfam/SMART)Path to HMM database file for domain scanning.--threads10Total CPU threads allocated for parallel processing steps.--outdir./resultsDirectory where output files and summary reports are saved.
+
+## Prerequisites
+
+TrueOrtho requires the following software:
+
+* **Nextflow** (≥ 20.07.1)
+* **Conda**, **Mamba**, **Docker**, or **Singularity** for dependency management
+
+---
+
+## Basic Usage
+
+```bash
+nextflow run main.nf \
+    --input input.csv \
+    --eggnog_db /path/to/eggnog_db \
+    --domain_db /path/to/pfam_smart.hmm \
+    --threads 12
+```
+
+
+## Input CSV Format
+
+Create a CSV file defining one or more query–database pairs.
+
+```csv
+query,database,kog_id,target_domain
+/path/to/query1.fasta,/path/to/species1_proteome.fasta,,
+/path/to/query2.fasta,/path/to/species2_proteome.fasta,KOG1234,
+/path/to/query3.fasta,/path/to/species3_proteome.fasta,,"Pkinase"
+/path/to/query4.fasta,/path/to/species4_proteome.fasta,KOG5678,"Pkinase,WD40"
+
+```
+
+### Column Descriptions
+
+| Column          | Required | Description                                                                                                                                                                         |
+| --------------- | :------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query`         |     ✓    | Path to the query protein FASTA file.                                                                                                                                               |
+| `database`      |     ✓    | Path to the target species proteome FASTA file.                                                                                                                                     |
+| `kog_id`        |    No    | Optional KOG/COG identifier used for explicit ortholog assignment.                                                                                                                  |
+| `target_domain` |    No    | Optional comma-separated Pfam/SMART domain Short name used for domain conservation filtering. When specifying multiple domains, enclose them in quotes (e.g., `"Pkinase,WD40"`). |
+
+---
+
+## ⚙️ Pipeline Parameters
+
+### Required Parameters
+
+| Parameter | Description                                                 |
+| --------- | ----------------------------------------------------------- |
+| `--input` | Path to the input CSV file containing query–database pairs. |
+
+### Database & Resource Parameters
+
+| Parameter      | Default                                      | Description                                                                                                          |
+| -------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `--eggnog_db`  | Auto-download (eggNOG v5.0.2)                | Directory containing the pre-downloaded eggNOG database.                                                             |
+| `--domain_db`  | Auto-download (combined Pfam/SMART database) | Path to the HMM database used for domain scanning.                                                                   |
+| `--prostt5_db` | Auto-download                                | Directory containing the Foldseek ProstT5 database used for structure prediction and structural similarity searches. |
+| `--threads`    | `10`                                         | Number of CPU threads allocated for parallel execution.                                                              |
+| `--outdir`     | `./results`                                  | Directory where all pipeline outputs and summary reports are written.                                                |
+
+
 
 # Output Interpretation
 
