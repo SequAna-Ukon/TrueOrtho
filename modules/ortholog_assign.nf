@@ -1,7 +1,6 @@
 process ORTHOLOG_ASSIGN {
     tag "${query.simpleName}_${species}"
     
-    // Publish only the three key files
     publishDir "${params.outdir}/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_orthologs.fa'
     publishDir "${params.outdir}/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_hits.txt', optional: true
     publishDir "${params.outdir}/ortholog_assign/${query.simpleName}_${species}", mode: 'copy', pattern: '*_kog_info.txt', optional: true
@@ -15,8 +14,6 @@ process ORTHOLOG_ASSIGN {
     path "${query.simpleName}_${species}_hits.txt", optional: true, emit: hits_to_extract
     path "${query.simpleName}_${species}_kog_info.txt", optional: true, emit: kog_info
 
-    conda "bioconda::eggnog-mapper=2.1.13 bioconda::seqkit=2.8.0"
-
     script:
     """
     #!/bin/bash
@@ -29,17 +26,8 @@ process ORTHOLOG_ASSIGN {
 
     exec > "\${prefix}_process.log" 2>&1
     
-    echo "=== ORTHOLOG_ASSIGN DEBUG INFO ==="
-    echo "[INFO] Query: ${query}"
-    echo "[INFO] Hits file: ${hits_fasta}"
-    echo "[INFO] Hits file size: \$(wc -l < '${hits_fasta}' 2>/dev/null || echo 0) lines"
-    echo "[INFO] Species: ${species}"
-    echo "[INFO] KOG ID: '${kog_id}'"
-    echo "[INFO] Threads: ${threads}"
-    echo "[INFO] EggNOG database directory: ${eggnog_db_dir}"
-    echo "=================================="
 
-    # --- FIX: Find database in work/databases/ ---
+    # Find databases
     EGGNOG_DB_PATH=""
     if [ -f "${eggnog_db_dir}/eggnog.db" ]; then
         EGGNOG_DB_PATH="${eggnog_db_dir}"
@@ -56,7 +44,7 @@ process ORTHOLOG_ASSIGN {
     fi
     export EGGNOG_DATA_DIR="\$EGGNOG_DB_PATH"
 
-    # List contents for debug
+    # contents for debug
     find -L "${eggnog_db_dir}" -type f -name "*.db" -o -name "*.dmnd" -o -name "*.txt" 2>/dev/null | head -20
     
     if [ ! -s "${hits_fasta}" ]; then
@@ -76,6 +64,7 @@ process ORTHOLOG_ASSIGN {
     fi
 
     # Annotate query
+
     emapper.py -m diamond --cpu ${task.cpus} --data_dir "\$EGGNOG_DATA_DIR" -i "${query}" -o query_emapper
     
     if [ ! -s query_emapper.emapper.annotations ]; then
