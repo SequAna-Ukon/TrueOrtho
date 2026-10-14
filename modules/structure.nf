@@ -67,7 +67,7 @@ process STRUCTURAL_ORTHOLOGY_EVAL {
     # Pool Alignment & Phylogeny 
   
     cat query_fa.fa all_candidates.fa | seqkit rmdup -s > "${qid}_pooled.fa"
-    mafft --auto --thread ${task.cpus} "${qid}_pooled.fa" > "${qid}_aligned.fa"
+    mafft --auto --anysymbol --thread ${task.cpus} "${qid}_pooled.fa" > "${qid}_aligned.fa"
 
     seq_count=\$(grep -c "^>" "${qid}_aligned.fa" 2>/dev/null || true)
     seq_count=\${seq_count:-0}
